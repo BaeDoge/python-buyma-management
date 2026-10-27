@@ -1,0 +1,52 @@
+# BUYMA 가격 경쟁 자동화 설정
+# 실제 설정: config.example.yaml -> config.yaml
+# config.yaml은 Git에 커밋하지 않습니다.
+
+app:
+  own_seller:
+    name: "BestShip"
+    id: "12217668"
+
+  price:
+    delta: 1000
+    max_change: 10000
+
+  browser:
+    headless: false
+    slow_mo: 250
+    max_retry: 5
+    page_wait_ms: 1500
+    executable_paths:
+      - "C:/Program Files/Google/Chrome/Application/chrome.exe"
+      - "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+
+  buyma:
+    base_url: "https://personal-shopper-api.buyma.com"
+
+google:
+  scopes:
+    - "https://www.googleapis.com/auth/spreadsheets"
+  sheet_url: "YOUR_GOOGLE_SHEET_URL"
+  price_sheet: "[2]최저가"
+  history_sheet: "[5] 최저가 적용이력"
+  url_column: "URL"
+
+paths:
+  google_service_account: "secrets/service_account.json"
+  buyma_tokens: "secrets/tokens.json"
+  product_payloads: "data/buyma_products.json"
+  logs: "logs"
+  reports: "reports"
+  migration_debug: "data/migration_debug"
+
+# BUYMA 공개 가격비교 페이지의 상품 카드
+# 기존 프로젝트의 selector를 기본값으로 유지합니다.
+selectors:
+  product_card: ".product_body"
+  product_name: ".product_name a"
+  product_price:
+    selector: ".product_name a"
+    attribute: "price"
+  product_seller: ".product_Buyer a"
+  product_timesale: ".product_timesale_label"
+  product_link: "a[href]"

@@ -1,0 +1,11 @@
+# Secrets and local configuration
+.env
+config.yaml
+secrets/
+data/
+logs/
+reports/
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
