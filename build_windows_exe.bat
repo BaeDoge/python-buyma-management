@@ -1,20 +1,24 @@
 @echo off
 setlocal
-cd /d %~dp0
+cd /d "%~dp0"
 
-echo Building Windows onedir package. Run this on Windows.
-call uv run --with pyinstaller pyinstaller --noconfirm --clean --paths src --onedir --name BuymaPriceUpdater --collect-all playwright --collect-all greenlet --collect-all pandas --collect-all gspread --collect-all google.auth --collect-all yaml refresh_prices.py
+echo Building BESTSHIP Price Manager (Windows onedir).
+call uv run --with pyinstaller pyinstaller --noconfirm --clean --paths app\src --onedir --name BestShipPriceManager --collect-all playwright --collect-all greenlet --collect-all pandas --collect-all gspread --collect-all google.auth --collect-all yaml buyma_price_manager.py
 if errorlevel 1 goto fail
-if not exist dist\BuymaPriceUpdater mkdir dist\BuymaPriceUpdater
-if exist config.yaml copy /Y config.yaml dist\BuymaPriceUpdater\config.yaml >nul
-if not exist dist\BuymaPriceUpdater\data mkdir dist\BuymaPriceUpdater\data
-if not exist dist\BuymaPriceUpdater\secrets mkdir dist\BuymaPriceUpdater\secrets
+
+if not exist dist\BestShipPriceManager mkdir dist\BestShipPriceManager
+if exist config.example.yaml copy /Y config.example.yaml dist\BestShipPriceManager\config.example.yaml >nul
+if not exist dist\BestShipPriceManager\data mkdir dist\BestShipPriceManager\data
+if not exist dist\BestShipPriceManager\secrets mkdir dist\BestShipPriceManager\secrets
+
 echo.
-echo Build complete: dist\BuymaPriceUpdater\BuymaPriceUpdater.exe
-echo Copy your own config.yaml and required data/secrets into the matching folders.
-echo Do NOT share tokens or service-account JSON files.
+echo Build complete: dist\BestShipPriceManager\BestShipPriceManager.exe
+echo Create config.yaml from config.example.yaml and place BESTSHIP's own OAuth token,
+echo Google service-account key, and validated product payloads beside the executable.
+echo Never include .env, tokens.json, service-account JSON, or product data in the distributed package.
 pause
 exit /b 0
+
 :fail
 echo Build failed. Review the error above.
 pause
