@@ -36,6 +36,8 @@ def valid_payload_count(settings: Settings) -> tuple[int, int]:
             continue
         try:
             client.validate_payload({"product": entry["product"]}, expected_product_id=str(product_id))
+            if entry["product"].get("control") != "publish":
+                continue
         except (ValueError, TypeError):
             continue
         valid += 1
