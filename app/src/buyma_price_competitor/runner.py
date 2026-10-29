@@ -49,8 +49,8 @@ async def run_price_competition(
     Shopper API specification exposes product update requests, not a competitor-price
     search endpoint. Any actual price change is sent only through the official API.
     """
-    delta = settings.price_delta if price_delta is None else price_delta
-    maximum = settings.max_change if max_change is None else max_change
+    delta = 10 if price_delta is None else price_delta
+    maximum = 100 if max_change is None else max_change
 
     sheets = GoogleSheetClient(
         settings.google_service_account,
