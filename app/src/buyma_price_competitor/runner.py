@@ -88,12 +88,29 @@ async def run_price_competition(
         )
 
         try:
-            rows = list(df.itertuples(index=False))
+            # Read the current URL column on every run. Ignore blank cells and
+            # duplicate URLs so a repeated row cannot trigger duplicate price requests.
+            rows: list[str] = []
+            seen_urls: set[str] = set()
+            for raw_url in df[settings.google_url_column].tolist():
+                if pd.isna(raw_url):
+                    continue
+                url = str(raw_url).strip()
+                if not url:
+                    continue
+                if url in seen_urls:
+                    logger.warning("중복 URL을 건너뜁니다: %s", url)
+                    continue
+                seen_urls.add(url)
+                rows.append(url)
+
             if limit is not None:
                 rows = rows[:limit]
 
-            for row_index, row in enumerate(rows, start=1):
-                url = str(getattr(row, settings.google_url_column)).strip()
+            if not rows:
+                logger.warning("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
+
+            for row_index, url in enumerate(rows, start=1):
                 logger.info("[%s/%s] URL: %s", row_index, len(rows), url)
 
                 if not await collector.open_public(page, url):
@@ -277,6 +294,6 @@ async def write_results(settings, sheets, results, changed, already_lowest, no_o
 
     if results:
         history = pd.DataFrame(results)
-        sheets.replace_df(settings.google_history_sheet, history)
+        sheets.append_df(settings.google_history_sheet, history)
 
     return report_path
