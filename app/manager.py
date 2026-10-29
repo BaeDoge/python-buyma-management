@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from pathlib import Path
 import sys
 from typing import Any
@@ -103,13 +104,19 @@ def main() -> int:
         print("=" * 62)
         print("1. 가격 비교 및 결과 확인 (DRY RUN, 실제 가격 변경 없음)")
         print("2. 가격 비교 후 조건에 맞는 상품 가격 변경 (BUYMA API)")
+        print("3. 연결 복구 / 선택적 상품 데이터 준비")
         print("0. 종료")
         choice = input("선택: ").strip()
 
         if choice == "0":
             return 0
+        if choice == "3":
+            print("\\n연결 복구와 선택적 데이터 준비 도구를 엽니다.")
+            print("평소 가격 비교에는 이 메뉴를 실행할 필요가 없습니다.")
+            subprocess.run([sys.executable, str(ROOT / "app" / "setup_once.py")], cwd=ROOT, check=False)
+            continue
         if choice not in {"1", "2"}:
-            print("1, 2 또는 0을 선택해 주세요.")
+            print("1, 2, 3 또는 0을 선택해 주세요.")
             continue
 
         apply = choice == "2"
