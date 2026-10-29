@@ -18,10 +18,6 @@ def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def id_store_path(settings):
-    """로그인 없이 migration에서 생성한 BestShip 상품 ID 저장소."""
-    return settings.product_payloads.with_name("buyma_product_ids.json")
-
 
 async def run_price_competition(
     settings,
@@ -47,15 +43,6 @@ async def run_price_competition(
         return
     if settings.google_url_column not in df.columns:
         raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
-
-    # 로그인 없는 migration 결과. DRY RUN에서는 이 파일만 있으면 된다.
-    id_path = id_store_path(settings)
-    discovered_ids: dict[str, Any] = {}
-    if id_path.exists():
-        try:
-            discovered_ids = load(id_path)
-        except Exception as exc:
-            logger.warning("상품 ID 저장소를 읽지 못했습니다: %s", exc)
 
     # 가격 변경은 BUYMA Personal Shopper API로만 수행한다.
     # 웹 로그인/편집 화면 자동화는 사용하지 않는다.
@@ -102,12 +89,27 @@ async def run_price_competition(
         )
 
         try:
-            rows = list(df.itertuples(index=False))
+            # 현재 구글 시트 URL 전체를 매번 새로 읽고, 빈 셀과 중복 URL은 건너뜁니다.
+            rows: list[str] = []
+            seen_urls: set[str] = set()
+            for raw_url in df[settings.google_url_column].tolist():
+                if pd.isna(raw_url):
+                    continue
+                url = str(raw_url).strip()
+                if not url:
+                    continue
+                if url in seen_urls:
+                    logger.warning("중복 URL을 건너뜁니다: %s", url)
+                    continue
+                seen_urls.add(url)
+                rows.append(url)
+
             if limit is not None:
                 rows = rows[:limit]
+            if not rows:
+                logger.warning("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
 
-            for row_index, row in enumerate(rows, start=1):
-                url = str(getattr(row, settings.google_url_column)).strip()
+            for row_index, url in enumerate(rows, start=1):
                 logger.info("[%s/%s] URL: %s", row_index, len(rows), url)
 
                 if not await collector.open_public(page, url):
@@ -207,15 +209,6 @@ async def run_price_competition(
                         decision.reason,
                     )
 
-                    # 로그인 없는 migration 결과가 실제로 저장되어 있는지도 보여준다.
-                    if product_id in discovered_ids:
-                        logger.info("  상품 ID 저장소 확인: %s", product_id)
-                    else:
-                        logger.warning(
-                            "  상품 ID가 migration 저장소에 없습니다: %s",
-                            product_id,
-                        )
-
                     if decision.reason == "이미 최저가":
                         result["적용 여부"] = None
                         already_lowest += 1
@@ -257,11 +250,6 @@ async def run_price_competition(
                         )
                         result["request_uid"] = request_uid
                         result["request_received_at"] = request_received_at
-                        if product_id in discovered_ids:
-                            discovered_ids[product_id]["last_attempted_price"] = decision.new_price
-                            discovered_ids[product_id]["last_attempted_at"] = now_text()
-                            discovered_ids[product_id]["last_request_uid"] = request_uid
-                            discovered_ids[product_id]["last_request_received_at"] = request_received_at
                         # Save the request metadata, but do not mutate the stored product price:
                         # API acceptance is asynchronous and does not prove the listing updated.
                         payload_entry["last_request_uid"] = request_uid
@@ -283,12 +271,17 @@ async def run_price_competition(
         finally:
             await browser.close()
 
-    if apply and discovered_ids:
-        save(id_path, discovered_ids)
     if apply and payloads:
         save(settings.product_payloads, payloads)
 
-    await write_results(settings, sheets, results, changed, already_lowest, no_own)
+    run_time = now_text()
+    run_mode = "APPLY" if apply else "DRY RUN"
+    for result in results:
+        result["실행시각"] = run_time
+        result["실행모드"] = run_mode
+
+    report_path = await write_results(settings, sheets, results, changed, already_lowest, no_own)
+    logger.info("CSV 보고서 저장: %s", report_path)
 
     logger.info(
         "=== 완료 | API 요청 접수 %s / 이미 최저 %s / BestShip 없음 %s / 스킵 %s ===",
@@ -307,6 +300,6 @@ async def write_results(settings, sheets, results, changed, already_lowest, no_o
 
     if results:
         history = pd.DataFrame(results)
-        sheets.replace_df(settings.google_history_sheet, history)
+        sheets.append_df(settings.google_history_sheet, history)
 
     return report_path
