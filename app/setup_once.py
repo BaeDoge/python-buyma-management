@@ -26,12 +26,12 @@ def main() -> None:
     python = sys.executable
     while True:
         print("\n" + "=" * 58)
-        print("BUYMA 최초 1회 설정 / 신규 상품 처리")
-        print("정기 최저가 갱신은 refresh_prices.py 를 사용하세요.")
+        print("BUYMA 연결 / 선택적 데이터 준비")
+        print("가격 비교는 구글 시트 URL을 매번 읽는 refresh_prices.py 를 사용하세요.")
         print("=" * 58)
         print("1. BUYMA OAuth 권한 승인/토큰 발급 (최초 1회 또는 재승인 시)")
-        print("2. 공개 페이지에서 상품 ID 수집 (비로그인, 공식 API 미사용)")
-        print("3. 상품 payload 수집 시도 (웹 로그인 필요, 필요한 경우에만)")
+        print("2. 선택 도구: 공개 페이지에서 상품 ID 저장 (일반 실행에는 불필요)")
+        print("3. 선택 도구: 상품 수정용 payload 수집 시도 (웹 로그인, 성공 보장 없음)")
         print("0. 종료")
         choice = input("선택: ").strip()
 
