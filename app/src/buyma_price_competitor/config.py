@@ -17,6 +17,10 @@ ROOT = (
 )
 load_dotenv(ROOT / ".env")
 
+# This build is intentionally dedicated to the single BESTSHIP store.
+BESTSHIP_SELLER_NAME = "BestShip"
+BESTSHIP_SELLER_ID = "12217668"
+
 
 def _get(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
     value: Any = data
@@ -97,8 +101,8 @@ class Settings:
             config_path=path,
             own_seller_name=str(seller.get("name", "BestShip")),
             own_seller_id=str(seller.get("id", "12217668")),
-            price_delta=int(price_cfg.get("delta", 1000)),
-            max_change=int(price_cfg.get("max_change", 10000)),
+            price_delta=int(price_cfg.get("delta", 10)),
+            max_change=int(price_cfg.get("max_change", 100)),
             headless=bool(browser.get("headless", False)),
             slow_mo=int(browser.get("slow_mo", 250)),
             max_retry=int(browser.get("max_retry", 5)),
