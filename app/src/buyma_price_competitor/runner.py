@@ -18,6 +18,20 @@ def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _sheet_urls(df: pd.DataFrame, column: str, limit: int | None) -> list[str]:
+    """Read the current URL list, ignoring blank and exact duplicate rows."""
+    urls: list[str] = []
+    seen: set[str] = set()
+    for value in df[column].tolist():
+        if pd.isna(value):
+            continue
+        url = str(value).strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls[:limit] if limit is not None else urls
+
 
 async def run_price_competition(
     settings,
@@ -29,6 +43,12 @@ async def run_price_competition(
     limit: int | None = None,
     target_product_id: str | None = None,
 ) -> None:
+    """Compare all current Google Sheet URLs, then process each BESTSHIP product once.
+
+    Competitor prices are read from public BUYMA pages because the public Personal
+    Shopper API specification exposes product update requests, not a competitor-price
+    search endpoint. Any actual price change is sent only through the official API.
+    """
     delta = settings.price_delta if price_delta is None else price_delta
     maximum = settings.max_change if max_change is None else max_change
 
@@ -38,47 +58,38 @@ async def run_price_competition(
         settings.google_sheet_url,
     )
     df = sheets.read_df(settings.google_price_sheet)
-    if df.empty:
-        logger.info("Google Sheet에 데이터가 없습니다.")
-        return
     if settings.google_url_column not in df.columns:
         raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
 
-    # 가격 변경은 BUYMA Personal Shopper API로만 수행한다.
-    # 웹 로그인/편집 화면 자동화는 사용하지 않는다.
+    urls = _sheet_urls(df, settings.google_url_column, limit)
+    if not urls:
+        logger.info("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
+        return
+
     payloads: dict[str, Any] = {}
     if settings.product_payloads.exists():
         try:
             payloads = load(settings.product_payloads)
         except Exception as exc:
-            logger.warning("API payload 저장소를 읽지 못했습니다: %s", exc)
+            logger.error("상품 payload 파일을 읽을 수 없습니다: %s", exc)
+            if apply:
+                raise
 
     api_client = None
     if apply:
-        # Fail early instead of scraping hundreds of URLs when credentials are missing.
         if not settings.buyma_tokens.exists():
             raise FileNotFoundError(
-                f"BUYMA OAuth token이 없습니다: {settings.buyma_tokens}. "
-                "OAuth를 완료하고 tokens.json을 준비하세요."
+                f"BUYMA OAuth 토큰이 없습니다: {settings.buyma_tokens}. "
+                "연결된 BESTSHIP 토큰 파일을 확인하세요."
             )
         api_client = BuymaClient(settings.buyma_tokens, settings.buyma_base_url)
         api_client.validate_token_file()
-        if target_product_id:
-            entry = payloads.get(str(target_product_id))
-            product = entry.get("product") if isinstance(entry, dict) else None
-            if not isinstance(product, dict):
-                raise RuntimeError(
-                    f"상품 {target_product_id}의 공식 API payload가 없습니다: "
-                    f"{settings.product_payloads}. "
-                    "가격 변경에는 BUYMA Product API 필수 필드를 갖춘 전체 payload가 필요합니다. "
-                    "source_product_data만 저장된 경우에는 아직 API 수정에 사용할 수 없습니다."
-                )
-            api_client.validate_payload({"product": product}, expected_product_id=str(target_product_id))
 
     collector = PublicProductCollector(settings, logger)
-
-    results: list[dict[str, Any]] = []
-    changed = skipped = already_lowest = no_own = 0
+    # Keyed by BUYMA product ID to ensure one decision and at most one API request
+    # per product in a run, even when the same item appears on multiple sheet URLs.
+    candidates: dict[str, dict[str, Any]] = {}
+    url_results: list[dict[str, Any]] = []
 
     async with async_playwright() as playwright:
         page, context, browser = await launch_chrome(
@@ -87,219 +98,214 @@ async def run_price_competition(
             settings.headless,
             settings.slow_mo,
         )
-
         try:
-            # 현재 구글 시트 URL 전체를 매번 새로 읽고, 빈 셀과 중복 URL은 건너뜁니다.
-            rows: list[str] = []
-            seen_urls: set[str] = set()
-            for raw_url in df[settings.google_url_column].tolist():
-                if pd.isna(raw_url):
-                    continue
-                url = str(raw_url).strip()
-                if not url:
-                    continue
-                if url in seen_urls:
-                    logger.warning("중복 URL을 건너뜁니다: %s", url)
-                    continue
-                seen_urls.add(url)
-                rows.append(url)
-
-            if limit is not None:
-                rows = rows[:limit]
-            if not rows:
-                logger.warning("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
-
-            for row_index, url in enumerate(rows, start=1):
-                logger.info("[%s/%s] URL: %s", row_index, len(rows), url)
-
+            for index, url in enumerate(urls, start=1):
+                logger.info("[%s/%s] URL: %s", index, len(urls), url)
                 if not await collector.open_public(page, url):
-                    results.append({
+                    url_results.append({
                         "URL": url,
+                        "상품ID": "",
                         "적용 여부": False,
                         "비고": "공개 페이지 접속 실패",
                     })
-                    skipped += 1
                     continue
 
-                products = await collector.collect(page)
-                valid = [p for p in products if p.price is not None]
-
-                logger.info(
-                    "  상품 %s개 / BestShip 후보 %s개",
-                    len(valid),
-                    sum(collector.is_own_seller(p) for p in valid),
-                )
-
-                if not valid:
-                    results.append({"URL": url, "적용 여부": False, "비고": "상품 없음"})
-                    skipped += 1
-                    continue
-
-                competitor_prices = [
-                    p.price for p in valid if not collector.is_own_seller(p)
+                products = [
+                    product for product in await collector.collect(page)
+                    if product.price is not None
                 ]
-                own_products = [p for p in valid if collector.is_own_seller(p)]
-                if target_product_id:
-                    own_products = [p for p in own_products if str(p.product_id) == str(target_product_id)]
+                own_products = [
+                    product for product in products
+                    if collector.is_own_seller(product)
+                    and (target_product_id is None or str(product.product_id) == str(target_product_id))
+                ]
+                competitor_prices = [
+                    int(product.price) for product in products
+                    if not collector.is_own_seller(product) and product.price is not None
+                ]
 
                 if not own_products:
-                    logger.warning(
-                        "  BestShip 상품 없음. 판매자 샘플: %s",
-                        [(p.seller_name, p.seller_id) for p in valid[:10]],
-                    )
-                    results.append({
+                    url_results.append({
                         "URL": url,
+                        "상품ID": "",
                         "적용 여부": False,
-                        "비고": "BestShip 상품이 없습니다.",
+                        "비고": "BESTSHIP 상품이 없습니다.",
                     })
-                    no_own += 1
+                    logger.warning("  BESTSHIP 상품이 없습니다.")
                     continue
 
                 if not competitor_prices:
-                    results.append({
+                    url_results.append({
                         "URL": url,
+                        "상품ID": "",
                         "적용 여부": False,
-                        "비고": "경쟁 판매자 없음",
+                        "비고": "비교 가능한 경쟁 매장 가격이 없습니다.",
                     })
-                    skipped += 1
+                    logger.warning("  비교 가능한 경쟁 매장 가격이 없습니다.")
                     continue
 
-                min_shop = min(competitor_prices)
-
+                lowest = min(competitor_prices)
                 for own in own_products:
-                    current = int(own.price)
-                    result = {
-                        "URL": url,
-                        "상품명": own.name,
-                        "상품ID": own.product_id,
-                        "판매자": own.seller_name,
-                        "판매자ID": own.seller_id,
-                        "현재가": current,
-                        "최저가": min_shop,
-                        "신규가": None,
-                        "가격 차이": None,
-                        "적용 여부": False,
-                        "비고": "",
-                    }
-
-                    if own.is_timesale:
-                        result["비고"] = "타임 세일"
-                        results.append(result)
-                        skipped += 1
-                        continue
-
                     if not own.product_id:
-                        result["비고"] = "공개 카드에서 상품 ID 확인 실패"
-                        results.append(result)
-                        skipped += 1
+                        url_results.append({
+                            "URL": url,
+                            "상품명": own.name,
+                            "상품ID": "",
+                            "현재가": own.price,
+                            "최저가": lowest,
+                            "적용 여부": False,
+                            "비고": "BESTSHIP 상품 ID를 확인하지 못했습니다.",
+                        })
                         continue
 
-                    product_id = str(own.product_id)
-                    decision = decide(current, min_shop, delta, maximum)
-                    result["신규가"] = decision.new_price
-                    result["가격 차이"] = decision.change
-                    result["비고"] = decision.reason
-
-                    logger.info(
-                        "  %s | 현재 %s / 경쟁최저 %s / 신규 %s / %s",
-                        product_id,
-                        f"{current:,}",
-                        f"{min_shop:,}",
-                        f"{decision.new_price:,}" if decision.new_price else "-",
-                        decision.reason,
-                    )
-
-                    if decision.reason == "이미 최저가":
-                        result["적용 여부"] = None
-                        already_lowest += 1
-                        results.append(result)
-                        continue
-
-                    if decision.new_price is None:
-                        skipped += 1
-                        results.append(result)
-                        continue
-
-                    # DRY RUN에서는 API 요청을 보내지 않는다.
-                    if not apply:
-                        result["비고"] = f"DRY RUN / {decision.reason}"
-                        results.append(result)
-                        continue
-
-                    try:
-                        payload_entry = payloads.get(product_id)
-                        stored_product = payload_entry.get("product") if isinstance(payload_entry, dict) else None
-                        if not isinstance(stored_product, dict):
-                            raise RuntimeError(
-                                f"공식 API payload가 없습니다 ({settings.product_payloads}). "
-                                "source_product_data는 API 수정용 payload가 아닙니다."
-                            )
-
-                        api_response = api_client.update_price(
-                            {"product": stored_product},
-                            decision.new_price,
-                            expected_product_id=product_id,
-                        )
-                        request_uid = api_response.get("request_uid")
-                        request_received_at = api_response.get("request_received_at")
-                        result["적용 여부"] = True
-                        result["비고"] = (
-                            f"BUYMA API 요청 접수: {current:,} -> {decision.new_price:,}; "
-                            f"request_uid={request_uid or '응답에 없음'} "
-                            "(비동기 반영 완료 여부는 BUYMA에서 확인 필요)"
-                        )
-                        result["request_uid"] = request_uid
-                        result["request_received_at"] = request_received_at
-                        # Save the request metadata, but do not mutate the stored product price:
-                        # API acceptance is asynchronous and does not prove the listing updated.
-                        payload_entry["last_request_uid"] = request_uid
-                        payload_entry["last_request_received_at"] = request_received_at
-                        payload_entry["last_requested_price"] = decision.new_price
-                        payload_entry["last_requested_at"] = now_text()
-                        changed += 1
-                        logger.info(
-                            "  BUYMA API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
-                            product_id, decision.new_price, request_uid,
-                        )
-                    except Exception as exc:
-                        result["비고"] = f"BUYMA API 가격 변경 오류: {exc}"
-                        skipped += 1
-                        logger.exception("  API 가격 변경 실패: %s", product_id)
-
-                    results.append(result)
+                    pid = str(own.product_id)
+                    item = candidates.setdefault(pid, {
+                        "상품ID": pid,
+                        "상품명": own.name,
+                        "판매자": "BestShip",
+                        "판매자ID": settings.own_seller_id,
+                        "현재가": int(own.price),
+                        "관측된 현재가": {int(own.price)},
+                        "최저가": lowest,
+                        "비교 URL": [],
+                        "타임세일": False,
+                    })
+                    item["비교 URL"].append(url)
+                    item["관측된 현재가"].add(int(own.price))
+                    item["최저가"] = min(int(item["최저가"]), lowest)
+                    item["타임세일"] = bool(item["타임세일"] or own.is_timesale)
+                    if not item.get("상품명") and own.name:
+                        item["상품명"] = own.name
 
         finally:
             await browser.close()
 
+    results: list[dict[str, Any]] = list(url_results)
+    changed = skipped = already_lowest = 0
+    run_time = now_text()
+    run_mode = "APPLY" if apply else "DRY RUN"
+
+    for pid, item in candidates.items():
+        current = int(item["현재가"])
+        lowest = int(item["최저가"])
+        urls_for_item = list(dict.fromkeys(item["비교 URL"]))
+        result: dict[str, Any] = {
+            "실행시각": run_time,
+            "실행모드": run_mode,
+            "URL": " | ".join(urls_for_item),
+            "상품명": item["상품명"],
+            "상품ID": pid,
+            "판매자": item["판매자"],
+            "판매자ID": item["판매자ID"],
+            "현재가": current,
+            "최저가": lowest,
+            "신규가": None,
+            "가격 차이": None,
+            "적용 여부": False,
+            "비고": "",
+        }
+
+        # If public pages disagree about the live price, do not make a decision
+        # from a possibly stale or inconsistent page snapshot.
+        observed_prices = sorted(item["관측된 현재가"])
+        if len(observed_prices) > 1:
+            result["비고"] = f"같은 상품의 현재가가 URL마다 다름: {observed_prices}; 변경 보류"
+            skipped += 1
+            results.append(result)
+            logger.warning("%s: %s", pid, result["비고"])
+            continue
+
+        if item["타임세일"]:
+            result["비고"] = "타임 세일 상품은 자동 변경하지 않음"
+            skipped += 1
+            results.append(result)
+            continue
+
+        decision = decide(current, lowest, delta, maximum)
+        result["신규가"] = decision.new_price
+        result["가격 차이"] = decision.change
+        result["비고"] = decision.reason
+        logger.info(
+            "상품 %s | 현재 %s / 경쟁 최저 %s / 계산 가격 %s / %s",
+            pid, f"{current:,}", f"{lowest:,}",
+            f"{decision.new_price:,}" if decision.new_price is not None else "-",
+            decision.reason,
+        )
+
+        if decision.reason == "이미 최저가":
+            result["적용 여부"] = None
+            already_lowest += 1
+            results.append(result)
+            continue
+        if decision.new_price is None:
+            skipped += 1
+            results.append(result)
+            continue
+        if not apply:
+            result["비고"] = f"DRY RUN / {decision.reason}"
+            results.append(result)
+            continue
+
+        try:
+            payload_entry = payloads.get(pid)
+            stored_product = payload_entry.get("product") if isinstance(payload_entry, dict) else None
+            if not isinstance(stored_product, dict):
+                raise RuntimeError(
+                    "공식 API용 전체 상품 payload가 없습니다. "
+                    "source_product_data만 있는 경우 가격 변경에 사용할 수 없습니다."
+                )
+            if stored_product.get("control") != "publish":
+                raise RuntimeError(
+                    "상품 payload의 control이 'publish'가 아닙니다. "
+                    "공개 상품의 상태를 바꿀 위험이 있어 요청하지 않았습니다."
+                )
+
+            api_response = api_client.update_price(
+                {"product": stored_product},
+                decision.new_price,
+                expected_product_id=pid,
+            )
+            request_uid = api_response.get("request_uid")
+            received_at = api_response.get("request_received_at")
+            result["적용 여부"] = True
+            result["request_uid"] = request_uid
+            result["request_received_at"] = received_at
+            result["비고"] = (
+                f"BUYMA API 요청 접수: {current:,} -> {decision.new_price:,}; "
+                f"request_uid={request_uid or '응답에 없음'}; "
+                "최종 반영은 웹훅 또는 BUYMA 상품 화면에서 확인 필요"
+            )
+            payload_entry["last_request_uid"] = request_uid
+            payload_entry["last_request_received_at"] = received_at
+            payload_entry["last_requested_price"] = decision.new_price
+            payload_entry["last_requested_at"] = now_text()
+            changed += 1
+            logger.info("BUYMA API 요청 접수: %s / request_uid=%s", pid, request_uid)
+        except Exception as exc:
+            result["비고"] = f"가격 변경 보류/실패: {exc}"
+            skipped += 1
+            logger.exception("상품 %s API 변경 실패", pid)
+
+        results.append(result)
+
     if apply and payloads:
         save(settings.product_payloads, payloads)
 
-    run_time = now_text()
-    run_mode = "APPLY" if apply else "DRY RUN"
-    for result in results:
-        result["실행시각"] = run_time
-        result["실행모드"] = run_mode
-
-    report_path = await write_results(settings, sheets, results, changed, already_lowest, no_own)
+    report_path = await write_results(settings, sheets, results)
+    logger.info(
+        "완료 | URL %s개 / BESTSHIP 상품 %s개 / API 요청 접수 %s / 이미 최저 %s / 스킵 %s",
+        len(urls), len(candidates), changed, already_lowest, skipped,
+    )
     logger.info("CSV 보고서 저장: %s", report_path)
 
-    logger.info(
-        "=== 완료 | API 요청 접수 %s / 이미 최저 %s / BestShip 없음 %s / 스킵 %s ===",
-        changed,
-        already_lowest,
-        no_own,
-        skipped,
-    )
 
-
-async def write_results(settings, sheets, results, changed, already_lowest, no_own):
+async def write_results(settings, sheets, results: list[dict[str, Any]]):
     settings.reports_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = settings.reports_dir / f"price_competition_{stamp}.csv"
+    report_path = settings.reports_dir / f"bestship_price_run_{stamp}.csv"
     pd.DataFrame(results).to_csv(report_path, index=False, encoding="utf-8-sig")
 
     if results:
-        history = pd.DataFrame(results)
-        sheets.append_df(settings.google_history_sheet, history)
+        sheets.append_df(settings.google_history_sheet, pd.DataFrame(results))
 
     return report_path
