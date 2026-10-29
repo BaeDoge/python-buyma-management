@@ -16,6 +16,9 @@ dependencies = [
     "ngrok>=1.4.0",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8.3.0"]
+
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"

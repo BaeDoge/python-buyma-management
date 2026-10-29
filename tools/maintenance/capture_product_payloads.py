@@ -1,6 +1,6 @@
 """BUYMA product source-data collector (one-time migration).
 
-Run from the project root with: uv run payload_migration.py
+Optional maintenance task. Run from the project root with: uv run python tools/maintenance/capture_product_payloads.py
 Requires BUYMA_LOGIN_ID and BUYMA_LOGIN_PASSWORD in .env. The script verifies the
 session before processing and stops immediately if a product page redirects to login.
 """

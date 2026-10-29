@@ -17,6 +17,10 @@ ROOT = (
 )
 load_dotenv(ROOT / ".env")
 
+# This build is intentionally dedicated to the single BESTSHIP store.
+BESTSHIP_SELLER_NAME = "BestShip"
+BESTSHIP_SELLER_ID = "12217668"
+
 
 def _get(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
     value: Any = data
@@ -33,8 +37,6 @@ class Settings:
     config_path: Path
     own_seller_name: str
     own_seller_id: str
-    price_delta: int
-    max_change: int
     headless: bool
     slow_mo: int
     max_retry: int
@@ -73,12 +75,15 @@ class Settings:
 
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         selectors = _get(data, "selectors", default={}) or {}
-        price_cfg = _get(data, "app", "price", default={}) or {}
         browser = _get(data, "app", "browser", default={}) or {}
-        seller = _get(data, "app", "own_seller", default={}) or {}
         google = _get(data, "google", default={}) or {}
         paths = _get(data, "paths", default={}) or {}
         buyma = _get(data, "app", "buyma", default={}) or {}
+        sheet_url = str(google.get("sheet_url", "")).strip()
+        if not sheet_url or sheet_url == "YOUR_GOOGLE_SHEET_URL":
+            raise ValueError(
+                "config.yaml의 google.sheet_url에 BESTSHIP의 Google Sheets URL을 입력하세요."
+            )
 
         price_selector = selectors.get("product_price", {})
         if isinstance(price_selector, dict):
@@ -95,17 +100,15 @@ class Settings:
         return cls(
             root=ROOT,
             config_path=path,
-            own_seller_name=str(seller.get("name", "BestShip")),
-            own_seller_id=str(seller.get("id", "12217668")),
-            price_delta=int(price_cfg.get("delta", 1000)),
-            max_change=int(price_cfg.get("max_change", 10000)),
+            own_seller_name=BESTSHIP_SELLER_NAME,
+            own_seller_id=BESTSHIP_SELLER_ID,
             headless=bool(browser.get("headless", False)),
             slow_mo=int(browser.get("slow_mo", 250)),
             max_retry=int(browser.get("max_retry", 5)),
             page_wait_ms=int(browser.get("page_wait_ms", 1500)),
             chrome_paths=[str(v) for v in (browser.get("executable_paths") or [])],
             buyma_base_url=str(buyma.get("base_url", "https://personal-shopper-api.buyma.com")).rstrip("/"),
-            google_sheet_url=str(google.get("sheet_url", "")),
+            google_sheet_url=sheet_url,
             google_price_sheet=str(google.get("price_sheet", "[2]최저가")),
             google_history_sheet=str(google.get("history_sheet", "[5] 최저가 적용이력")),
             google_url_column=str(google.get("url_column", "URL")),

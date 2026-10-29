@@ -1,9 +1,9 @@
-"""BUYMA 공개 상품 페이지에서 BestShip 상품 ID를 1회 수집합니다.
+"""Optional maintenance tool: discover BESTSHIP product IDs for payload capture.
 
 중요:
 - BUYMA 웹 로그인을 하지 않습니다.
 - Google Sheet의 상품 URL을 공개 페이지로 직접 엽니다.
-- BestShip(seller ID 12217668)을 공개 DOM에서 찾습니다.
+- BESTSHIP (seller ID 12217668)을 공개 DOM에서 찾습니다.
 - BestShip의 공개 상품 링크에서 product ID를 추출합니다.
 - 로그인 전용 /my/sell/{id}/edit 페이지에는 접근하지 않습니다.
 

@@ -90,6 +90,13 @@ class BuymaClient:
         body = deepcopy(stored_payload)
         self.validate_payload(body, expected_product_id=expected_product_id)
         product = body["product"]
+        # This updater operates only on products observed publicly. Never let a
+        # price-only run accidentally draft or suspend a live listing.
+        if product.get("control") != "publish":
+            raise BuymaAPIError(
+                "가격 변경 요청은 control='publish'인 공개 상품 payload만 허용합니다. "
+                "상품 상태 변경 위험이 있어 API 요청을 보내지 않았습니다."
+            )
         product["price"] = int(new_price)
 
         response = self.session.post(
