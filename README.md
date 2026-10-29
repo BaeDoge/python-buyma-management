@@ -1,122 +1,104 @@
-# BUYMA 가격 경쟁 자동화 (Windows + uv)
+# BUYMA 최저가 관리 프로그램
 
-이 패키지는 루트에서 `uv` 가상환경을 관리하고, 애플리케이션 소스는 `app/` 안에 두는 구조입니다. `.env`, `config.yaml`, `secrets/`, `data/`에는 실제 계정 정보가 들어갈 수 있으므로 공유 ZIP에 포함하지 않았습니다.
+Windows + Python/uv 기반 개발 버전입니다. 현재는 기능 검증용이며, 고객에게 바로 배포할 수 있는 상용 패키지 상태는 아닙니다. 이 문서는 **일반 가격 비교 실행**과 **초기 연결/상품 데이터 준비**를 분리해 설명합니다.
 
-## 판매자/API 승인 후 재개 순서
+## 일반 실행: 하나의 명령
 
-1. BUYMA Partners에서 앱이 승인/활성 상태인지 확인하고 Client ID/Secret이 현재 앱 값인지 확인합니다.
-2. `.env.example`을 `.env`로 복사해 `BUYMA_CLIENT_ID`, `BUYMA_CLIENT_SECRET`, `BUYMA_REDIRECT_URI`를 입력합니다. API는 운영 환경 기준입니다.
-3. ngrok 계정 토큰을 Windows CMD에 `set NGROK_AUTHTOKEN=...`으로 설정합니다. 토큰을 소스코드에 저장하지 마세요.
-4. 첫 번째 CMD에서 `run_ngrok_tunnel.bat`을 실행하고 출력된 HTTPS 주소를 확인합니다. 주소에 `/callback`을 붙여 BUYMA Partners의 Callback Redirect URL과 `.env`의 `BUYMA_REDIRECT_URI`에 정확히 동일하게 등록합니다. 주소가 바뀌면 양쪽도 갱신합니다. 터널은 켜 둡니다.
-5. 두 번째 CMD에서 `run_oauth.bat`을 실행합니다. 브라우저에서 `http://127.0.0.1:8000/login`을 열어 BUYMA 로그인/앱 설치 승인을 완료합니다. 성공 화면이 나와야 토큰이 `secrets/tokens.json`에 저장됩니다.
-6. `run_api_check.bat`으로 주문 조회 GET만 테스트합니다. 이 테스트는 상품을 변경하지 않습니다. HTTP 200이면 주문 조회 API 인증 성공입니다. 401이면 OAuth 토큰/환경/헤더, 403이면 판매자 권한이나 앱 권한을 확인합니다.
-7. 가격 자동화는 기본 DRY RUN입니다. 실제 가격 변경은 payload가 검증되고 한 상품 테스트를 별도로 승인한 후에만 `--apply`로 수행하세요.
+프로젝트 루트에서 실행합니다.
 
-> OAuth 승인 성공과 API 권한은 별도로 검증해야 합니다. 이 패키지는 상품 변경을 자동으로 실행하지 않습니다.
-
----
-
-
-현재는 Python 스크립트로 개발/검증하고, 기능 검증이 끝난 뒤에만 Windows용 PyInstaller 프로그램으로 패키징합니다. 지금은 exe를 만들지 않습니다.
-
-## 실행 프로그램 2개
-
-### 1. `setup_once.py` — 최초 1회 / 신규 상품 처리
-
-```bash
+```bat
 uv sync
-uv run setup_once.py
-```
-
-Windows에서는 `setup_once.bat`을 실행합니다.
-
-| 메뉴 | 작업 | BUYMA 웹 로그인 | 공식 API |
-|---|---|---|---|
-| 1 | OAuth 권한 승인 및 토큰 발급 | 브라우저 인증 필요 | OAuth 토큰 endpoint 사용 |
-| 2 | 공개 페이지에서 BestShip 상품 ID 수집 | 불필요 | 사용하지 않음 |
-| 3 | 상품 payload 수집 시도 | 필요할 수 있음, 상품 편집 페이지 방문 | 가격 변경 API는 호출하지 않음 |
-
-메뉴 1은 최초 1회 또는 토큰 재승인 시, 메뉴 2는 새 URL/상품이 있을 때, 메뉴 3은 full payload가 없을 때만 수동으로 실행합니다. 정기 실행에는 포함하지 않습니다.
-
-### 2. `refresh_prices.py` — 정기 최저가 갱신
-
-기본은 실제 변경을 하지 않는 DRY RUN입니다.
-
-```bash
 uv run refresh_prices.py --price-delta 10 --max-change 100
 ```
 
-상품 하나만 비교:
+기본 동작은 DRY RUN입니다. BUYMA 가격 변경 API를 호출하지 않고, 비교 결과를 CSV로 저장하며 설정된 구글 시트 이력 탭에도 결과를 기록합니다.
 
-```bash
+- `--price-delta 10`: 다른 매장의 최저가보다 10원 낮은 가격을 계산합니다.
+- `--max-change 100`: 현재 가격에서 100원을 초과해 인하해야 하는 상품은 건너뜁니다.
+- 구글 시트의 현재 URL 목록을 **매 실행마다 새로 읽습니다.** URL을 추가·삭제·교체하기 위해 `setup_once.py`나 `migration.py`를 실행할 필요는 없습니다.
+- 각 URL의 BUYMA 공개 페이지에서 BestShip 상품과 경쟁 상품을 읽고 가격을 비교합니다. 경쟁 가격 조회는 현재 공식 API가 아닌 공개 페이지 조회를 사용합니다.
+
+Windows에서는 `run_recurring_dry_run.bat`을 사용할 수 있습니다.
+
+## 초기 연결: 최초 1회 또는 재인증이 필요할 때
+
+### 1. 설정 파일 준비
+
+1. `config.example.yaml`을 복사해 `config.yaml`을 만듭니다.
+2. Google Sheets URL, 시트명(`[2]최저가`), URL 컬럼명(`URL`), 본인 판매자 이름/ID를 확인합니다.
+3. Google 서비스 계정 JSON을 `secrets/service_account.json`에 둡니다. 해당 서비스 계정에 대상 시트를 공유해야 합니다.
+4. `.env.example`을 복사해 `.env`를 만들고 BUYMA OAuth 값을 설정합니다.
+
+Google 서비스 계정 JSON과 BUYMA 비밀값은 프로그램이나 Git 저장소에 넣어 배포하면 안 됩니다.
+
+### 2. BUYMA OAuth
+
+OAuth는 최초 연결 때 한 번 승인하면 됩니다. 토큰이 무효화되거나 재승인이 필요한 경우에만 다시 진행합니다.
+
+현재 OAuth 콜백 흐름은 ngrok 터널과 등록된 Redirect URL 설정을 사용합니다. `run_ngrok_tunnel.bat`과 `run_oauth.bat`을 이용해 승인하고, 성공하면 토큰이 `secrets/tokens.json`에 저장됩니다. `run_api_check.bat`은 주문 조회 GET을 이용한 읽기 권한 점검이며 상품 수정 권한을 증명하지는 않습니다.
+
+이미 OAuth 연결을 마쳤다면 일반 가격 비교를 위해 다시 실행할 필요가 없습니다.
+
+## 상품 ID와 API payload의 구분
+
+### 상품 ID 수집은 일반 실행에 필요하지 않습니다
+
+`migration.py`와 `setup_once.py` 메뉴 2는 공개 페이지에서 상품 ID를 별도 JSON에 기록하는 과거/진단용 도구입니다. 현재 `refresh_prices.py`는 URL마다 공개 페이지에서 상품 ID를 직접 확인하므로 일반 실행에 이 저장소가 필요하지 않습니다. ID가 `data/buyma_product_ids.json`에 없다는 경고도 더 이상 가격 비교 실패로 취급하지 않습니다.
+
+### 실제 가격 변경에는 전체 상품 payload가 필요합니다
+
+BUYMA Product API는 `POST /api/v1/products.json`으로 등록/수정 요청을 받으며, 가격만 보내는 방식이 아닙니다. 공개 API 문서의 필수 항목과 현재 검증 코드에 맞는 전체 `product` 객체가 `data/buyma_products.json`에 있어야 합니다.
+
+- `payload_migration.py` 또는 `setup_once.py` 메뉴 3은 기존 상품의 데이터를 가져올 수 있는지 수동으로 시도하는 도구입니다. BUYMA 웹 로그인 정보가 필요할 수 있으며, 모든 상품에서 성공하지 않습니다.
+- `source_product_data`는 API용 전체 payload와 다릅니다. 빠진 상품 필드를 추측해 만들어 보내지 않습니다.
+- URL을 구글 시트에 새로 추가하면 가격 **비교**에는 즉시 포함됩니다. 그러나 해당 상품의 전체 payload가 저장되어 있지 않다면 실제 가격 **변경**은 건너뜁니다.
+- 새 상품을 API로 등록하는 별도 기능을 나중에 만든다면, 등록 요청에 사용한 완전한 payload를 그 시점에 저장해 이후 가격 변경에서 재사용하는 구조가 바람직합니다.
+
+공식 문서: https://specification.personal-shopper-api.buyma.com/en/api/products_json/
+
+## 실제 가격 변경
+
+**현재는 DRY RUN으로 결과를 검증하세요.** 실제 변경은 대상 상품의 payload를 확인하고, BUYMA API 상품 수정이 단일 상품에서 정상 반영되는지 검증한 후에만 명시적으로 실행해야 합니다.
+
+상품 하나만 DRY RUN:
+
+```bat
 uv run refresh_prices.py --product-id 137992656 --price-delta 10 --max-change 100
 ```
 
-실제 변경은 payload 검증 및 단일 상품 반영 확인 후에만 실행합니다.
+상품 하나에 실제 변경 요청을 보내는 명령(검증 및 별도 승인 이후에만 사용):
 
-```bash
+```bat
 uv run refresh_prices.py --apply --product-id 137992656 --price-delta 10 --max-change 100
 ```
 
-검증 후 전체 대상에 적용:
-
-```bash
-uv run refresh_prices.py --apply --price-delta 10 --max-change 100
-```
+전체 대상에 `--apply`를 지정하면 조건에 맞고 payload 검증을 통과한 상품마다 실제 API 요청을 보냅니다. API 응답의 요청 접수는 BUYMA 화면 반영 완료와 같지 않으므로 `request_uid`와 처리 결과를 따로 확인해야 합니다.
 
 Windows 배치 파일:
 - `run_recurring_dry_run.bat`: DRY RUN
-- `run_recurring_apply.bat`: 실제 API 요청 전 `APPLY` 입력 확인
+- `run_recurring_apply.bat`: `APPLY`를 입력해야 실제 API 요청을 실행하도록 되어 있음
 
-## 정확한 최초 실행 순서
+## 현재 사용하는 데이터 / 파일
 
-1. `config.example.yaml`을 `config.yaml`로 복사하고 시트 URL, 시트 이름, URL 컬럼, BestShip 판매자 ID를 확인합니다.
-2. Google 서비스 계정 파일을 `secrets/service_account.json`에 둡니다.
-3. OAuth 환경변수 `BUYMA_CLIENT_ID`, `BUYMA_CLIENT_SECRET`, `BUYMA_REDIRECT_URI`를 `.env`에 설정합니다.
-4. `uv sync`를 실행합니다.
-5. `uv run setup_once.py`의 메뉴 1에서 OAuth 승인/토큰 발급을 진행합니다. BUYMA 계정 인증은 이 초기 승인 때 필요합니다.
-6. 메뉴 2에서 상품 ID를 수집합니다. BUYMA 웹 로그인은 하지 않고 공개 페이지를 읽습니다.
-7. `data/buyma_product_ids.json`에서 대상 ID가 있는지 확인합니다.
-8. `data/buyma_products.json`에 API 필수 필드가 포함된 `product` 객체가 실제로 존재하고 `has_full_payload=true`인지 확인합니다. 없다면 메뉴 3으로 payload 수집을 수동 시도할 수 있지만, 성공을 보장하지 않습니다.
-9. `uv run refresh_prices.py --product-id <상품ID> --price-delta 10 --max-change 100` 으로 DRY RUN 결과를 확인합니다.
-10. payload가 검증된 테스트 상품 하나만 `--apply`로 요청하고, BUYMA 상품 화면에서 실제 가격 반영을 확인합니다. `request_uid`와 로그를 보관합니다.
+- `config.yaml`: 본인 환경 설정
+- `.env`: OAuth 환경 변수와 비밀값
+- `secrets/tokens.json`: BUYMA OAuth 토큰
+- `secrets/service_account.json`: Google 서비스 계정 키
+- `data/buyma_products.json`: 상품별 API payload 또는 수집한 source data
+- `data/buyma_product_ids.json`: 선택적 진단용 ID 저장소(일반 가격 비교에 불필요)
+- `logs/`: 실행 로그
+- `reports/`: CSV 실행 결과
 
-## 매주 2회 정기 실행 순서
+`.env`, `config.yaml`, `secrets/`, 실제 계정/상품 데이터는 공개 저장소나 고객 간 공유 ZIP에 포함하지 마세요.
 
-1. `uv run refresh_prices.py --price-delta 10 --max-change 100` 으로 DRY RUN을 실행합니다.
-2. 가격 변경 후보, 신규 가격, payload 상태, 오류 로그를 검토합니다.
-3. API 실제 반영이 검증된 뒤에만 `--apply`를 사용합니다.
-4. 정기 실행에는 `setup_once.py`, `migration.py`, `payload_migration.py`를 포함하지 않습니다. 신규 상품을 추가했을 때만 최초 1회 작업으로 돌아갑니다.
+## 고객 판매용 패키지화 전 남은 작업
 
-## 로그인 / 공개 조회 / API 사용 구분
+현재 코드는 개발/검증 버전입니다. PyInstaller로 EXE만 만들면 고객용 설치 프로그램이 완성되는 것은 아닙니다.
 
-| 기능 | BUYMA 웹 로그인 | 비로그인 공개 페이지 조회 | 공식 API |
-|---|---|---|---|
-| Google Sheets 읽기 | 아니오 | 아니오 | 아니오 |
-| 상품 ID 발견 (`migration.py`) | 아니오 | 예 | 아니오 |
-| 경쟁 최저가 비교 (`refresh_prices.py`) | 아니오 | 예 | 아니오 |
-| DRY RUN | 아니오 | 가격 비교 과정에서 사용 | 아니오 |
-| 실제 가격 변경 | 아니오 | 가격 비교 과정에서 사용 | 예 |
-| payload 수집 (`payload_migration.py`) | 예/로그인 필요 가능 | 아니오, 편집 페이지 | 가격 변경 API는 호출하지 않음 |
+1. 고객마다 Google Sheets 인증을 안전하게 설정할 수 있는 온보딩을 만들어야 합니다. 현재의 서비스 계정 JSON 방식은 고객별 설정이 필요합니다.
+2. BUYMA OAuth 앱/Client Secret/Redirect URL 운영 방식을 정리해야 합니다. Client Secret이나 사용자 토큰을 EXE에 내장하면 안 됩니다.
+3. 기존 상품의 전체 수정 payload를 안정적으로 준비하고 신규 상품에도 같은 정책을 적용해야 합니다.
+4. DRY RUN, 단일 상품 검증, 오류 복구, 요청 제한 및 API 웹훅/반영 확인을 테스트해야 합니다.
+5. 위 사항이 안정화된 다음 Windows용 PyInstaller 패키지와 고객용 설치/설정 안내를 만듭니다.
 
-중요: 현재 공식 API로 처리되는 것은 가격 변경 요청입니다. 경쟁 가격을 가져오는 부분은 여전히 로그인 없는 공개 페이지 조회이며, API로 완전히 대체되지 않았습니다. 비로그인 조회도 무제한으로 해도 된다는 뜻은 아닙니다. 요청 빈도를 적절히 제한하고 BUYMA 이용 조건을 준수하세요.
-
-## Payload의 현재 한계
-
-BUYMA Product API는 가격만으로 수정 요청을 만들 수 없고, `control`, `name`, `comments`, `brand_id`, `category_id`, `price`, `available_until`, `buying_area_id`, `shipping_area_id`, `images`, `shipping_methods`, `options`, `variants` 등 필수 정보가 필요합니다.
-
-현재 `payload_migration.py`가 일부 상품에서 `source_product_data`만 확보할 수 있습니다. 이것은 API용 full payload가 아닙니다. 누락 필드를 추측해서 채우지 않습니다. `has_full_payload=true`와 실제 필드 검증을 통과하지 못한 상품은 `--apply` 대상에서 제외됩니다. 이 데이터 매핑이 완성되기 전까지 자동 가격 변경이 모든 상품에서 가능한 것은 아닙니다.
-
-## 데이터 및 비밀정보
-
-- `data/buyma_product_ids.json`: 발견한 상품 ID 및 메타데이터
-- `data/buyma_products.json`: API용 payload 또는 수집한 source data
-- `secrets/tokens.json`: BUYMA API 토큰
-- `secrets/service_account.json`: Google 서비스 계정
-- `logs/`, `reports/`: 실행 기록
-
-`secrets/`와 실제 payload/개인정보 파일을 공개 저장소나 공유 ZIP에 넣지 마세요.
-
-## PyInstaller — 나중에 수행
-
-아직 패키징하지 않습니다. 최종 기능 검증이 끝나면 Windows에서 `build_windows_exe.bat`을 실행합니다. 스크립트는 `refresh_prices.py`를 진입점으로 `--onedir` 패키지를 만들도록 준비되어 있습니다. Windows exe는 Windows에서 빌드해야 합니다. `config.yaml`, `secrets`, `data`는 별도로 배치하고 exe에 토큰이나 서비스 계정 파일을 내장하지 마세요.
+현재 EXE 빌드 스크립트는 개발용입니다. 고객에게 배포하기 전 이 항목들을 해결해야 합니다.
