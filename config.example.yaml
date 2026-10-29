@@ -3,10 +3,6 @@
 # config.yaml은 Git에 커밋하지 않습니다.
 
 app:
-  price:
-    delta: 10
-    max_change: 100
-
   browser:
     headless: false
     slow_mo: 250
