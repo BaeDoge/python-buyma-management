@@ -79,7 +79,6 @@ class Settings:
         selectors = _get(data, "selectors", default={}) or {}
         price_cfg = _get(data, "app", "price", default={}) or {}
         browser = _get(data, "app", "browser", default={}) or {}
-        seller = _get(data, "app", "own_seller", default={}) or {}
         google = _get(data, "google", default={}) or {}
         paths = _get(data, "paths", default={}) or {}
         buyma = _get(data, "app", "buyma", default={}) or {}
@@ -99,8 +98,8 @@ class Settings:
         return cls(
             root=ROOT,
             config_path=path,
-            own_seller_name=str(seller.get("name", "BestShip")),
-            own_seller_id=str(seller.get("id", "12217668")),
+            own_seller_name=BESTSHIP_SELLER_NAME,
+            own_seller_id=BESTSHIP_SELLER_ID,
             price_delta=int(price_cfg.get("delta", 10)),
             max_change=int(price_cfg.get("max_change", 100)),
             headless=bool(browser.get("headless", False)),
