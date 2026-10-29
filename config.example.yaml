@@ -4,10 +4,10 @@
 
 app:
   browser:
-    headless: false
-    slow_mo: 250
-    max_retry: 5
-    page_wait_ms: 1500
+    headless: true
+    slow_mo: 0
+    max_retry: 3
+    page_wait_ms: 1000
     executable_paths:
       - "C:/Program Files/Google/Chrome/Application/chrome.exe"
       - "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"
