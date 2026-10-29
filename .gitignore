@@ -9,3 +9,6 @@ reports/
 __pycache__/
 .pytest_cache/
 *.py[cod]
+dist/
+build/
+*.spec
