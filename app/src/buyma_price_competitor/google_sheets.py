@@ -62,12 +62,16 @@ class GoogleSheetClient:
             if headers != existing_values[0]:
                 worksheet.update("A1", [headers])
 
+        if worksheet.col_count < len(headers):
+            worksheet.add_cols(len(headers) - worksheet.col_count)
+
         rows = []
         for record in df.to_dict(orient="records"):
-            rows.append([
-                "" if pd.isna(record.get(header, "")) else str(record.get(header, ""))
-                for header in headers
-            ])
+            row = []
+            for header in headers:
+                value = record.get(header, "")
+                row.append("" if value is None or (not isinstance(value, (dict, list)) and pd.isna(value)) else str(value))
+            rows.append(row)
 
         if rows:
             worksheet.append_rows(rows, value_input_option="USER_ENTERED")
