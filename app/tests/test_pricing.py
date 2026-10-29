@@ -15,10 +15,10 @@ def test_calculates_price_delta_below_competitor_minimum():
 
 
 def test_change_at_maximum_is_allowed():
-    result = decide(10_100, 10_000, 10, 100)
+    result = decide(10_090, 10_000, 10, 100)
     assert result.new_price == 9_990
-    assert result.change == 110
-    assert result.reason == "가격 차이 초과"
+    assert result.change == 100
+    assert result.reason == "변경 대상"
 
 
 def test_change_over_maximum_is_skipped():
