@@ -74,7 +74,7 @@ EXE에는 토큰이나 Google 서비스 계정 키를 내장하지 않습니다.
 
 ## 6. OAuth 복구 도구
 
-`run_ngrok_tunnel.bat`, `run_oauth.bat`, `oauth_server.py`는 일반 가격 관리에 사용하지 않습니다. 기존 토큰이 없어졌거나 BUYMA가 재인증을 요구할 때만 사용합니다.
+`tools/oauth/start_tunnel.bat`, `tools/oauth/reauthorize.bat`, `app/oauth_server.py`는 일반 가격 관리에 사용하지 않습니다. 기존 토큰이 없어졌거나 BUYMA가 재인증을 요구할 때만 사용합니다.
 
 ## 디렉터리 정리
 
