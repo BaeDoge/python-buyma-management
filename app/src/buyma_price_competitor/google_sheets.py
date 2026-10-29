@@ -35,3 +35,39 @@ class GoogleSheetClient:
         values: list[list[Any]] = [df.columns.tolist()] + df.fillna("").values.tolist()
         worksheet.clear()
         worksheet.update("A1", values)
+
+    def append_df(self, sheet_name: str, df: pd.DataFrame) -> None:
+        """Append run history without erasing previous executions."""
+        try:
+            worksheet = self.spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            worksheet = self.spreadsheet.add_worksheet(
+                title=sheet_name,
+                rows=max(1000, len(df) + 10),
+                cols=max(10, len(df.columns) + 2),
+            )
+
+        incoming_headers = [str(col) for col in df.columns]
+        existing_values = worksheet.get_all_values()
+
+        if not existing_values:
+            headers = incoming_headers
+            worksheet.update("A1", [headers])
+        else:
+            headers = [str(col) for col in existing_values[0]]
+            # Keep old columns and append new result fields without shifting prior data.
+            for column in incoming_headers:
+                if column not in headers:
+                    headers.append(column)
+            if headers != existing_values[0]:
+                worksheet.update("A1", [headers])
+
+        rows = []
+        for record in df.to_dict(orient="records"):
+            rows.append([
+                "" if pd.isna(record.get(header, "")) else str(record.get(header, ""))
+                for header in headers
+            ])
+
+        if rows:
+            worksheet.append_rows(rows, value_input_option="USER_ENTERED")
