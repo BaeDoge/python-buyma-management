@@ -64,6 +64,17 @@ BUYMA Product API는 가격만 보내는 단순 수정 요청이 아닙니다. `
 
 이 점은 중요합니다. **가격 비교가 성공해도 모든 상품에 대해 가격 변경이 가능하다는 뜻은 아닙니다.** 실행 메뉴에서 유효한 상품 payload가 하나도 없으면 실제 적용 단계는 시작하지 않습니다. payload가 일부만 준비돼 있다면 유효한 상품만 처리하고, 나머지는 결과에 사유를 남깁니다.
 
+### 개발자용 선택적 데이터 준비 도구
+
+구매자가 평소 실행할 도구는 아니지만, 기존 BESTSHIP 상품의 수정용 payload를 준비해야 할 때 프로젝트 관리자가 다음 도구를 수동으로 실행할 수 있습니다.
+
+```powershell
+uv run python tools/maintenance/migrate_product_ids.py
+uv run python tools/maintenance/capture_product_payloads.py
+```
+
+두 번째 도구는 BUYMA 웹 로그인 세션이 필요할 수 있으므로 `.env`의 `BUYMA_LOGIN_ID` / `BUYMA_LOGIN_PASSWORD`를 사용하는 개발자용 유지보수 작업입니다. 이 스크립트는 자동으로 완전한 API payload를 만들어 주는 것이 아니며, 확보 데이터가 source-only이면 가격 변경에 사용할 수 없습니다. 결과를 확인하고 나서야 실제 적용을 검토해야 합니다.
+
 BUYMA 공식 API는 업데이트 요청을 비동기로 처리합니다. HTTP 201 및 `request_uid`는 요청 접수를 뜻하며, 가격 반영 완료와 같지 않습니다. BUYMA에서 제공하는 webhook 또는 상품 화면에서 최종 결과를 확인해야 합니다. 자세한 내용은 [공식 REST API 문서](https://specification.personal-shopper-api.buyma.com/en/api/)에 있습니다.
 
 ## 5. EXE 빌드
