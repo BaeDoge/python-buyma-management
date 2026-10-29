@@ -3,13 +3,9 @@
 # config.yaml은 Git에 커밋하지 않습니다.
 
 app:
-  own_seller:
-    name: "BestShip"
-    id: "12217668"
-
   price:
-    delta: 1000
-    max_change: 10000
+    delta: 10
+    max_change: 100
 
   browser:
     headless: false
