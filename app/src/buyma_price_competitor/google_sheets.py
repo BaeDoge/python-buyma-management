@@ -52,25 +52,36 @@ class GoogleSheetClient:
 
         if not existing_values:
             headers = incoming_headers
-            worksheet.update("A1", [headers])
         else:
             headers = [str(col) for col in existing_values[0]]
             # Keep old columns and append new result fields without shifting prior data.
             for column in incoming_headers:
                 if column not in headers:
                     headers.append(column)
-            if headers != existing_values[0]:
-                worksheet.update("A1", [headers])
 
+        # Expand the grid before writing an extended header/rows.
         if worksheet.col_count < len(headers):
             worksheet.add_cols(len(headers) - worksheet.col_count)
+        required_rows = len(existing_values) + len(df) + 1
+        if worksheet.row_count < required_rows:
+            worksheet.add_rows(required_rows - worksheet.row_count)
+
+        if not existing_values:
+            worksheet.update("A1", [headers])
+        elif headers != existing_values[0]:
+            worksheet.update("A1", [headers])
 
         rows = []
         for record in df.to_dict(orient="records"):
             row = []
             for header in headers:
                 value = record.get(header, "")
-                row.append("" if value is None or (not isinstance(value, (dict, list)) and pd.isna(value)) else str(value))
+                if value is None or (
+                    not isinstance(value, (dict, list)) and pd.isna(value)
+                ):
+                    row.append("")
+                else:
+                    row.append(str(value))
             rows.append(row)
 
         if rows:
