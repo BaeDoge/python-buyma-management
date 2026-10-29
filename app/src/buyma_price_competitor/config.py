@@ -37,8 +37,6 @@ class Settings:
     config_path: Path
     own_seller_name: str
     own_seller_id: str
-    price_delta: int
-    max_change: int
     headless: bool
     slow_mo: int
     max_retry: int
@@ -77,7 +75,6 @@ class Settings:
 
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         selectors = _get(data, "selectors", default={}) or {}
-        price_cfg = _get(data, "app", "price", default={}) or {}
         browser = _get(data, "app", "browser", default={}) or {}
         google = _get(data, "google", default={}) or {}
         paths = _get(data, "paths", default={}) or {}
@@ -100,8 +97,6 @@ class Settings:
             config_path=path,
             own_seller_name=BESTSHIP_SELLER_NAME,
             own_seller_id=BESTSHIP_SELLER_ID,
-            price_delta=int(price_cfg.get("delta", 10)),
-            max_change=int(price_cfg.get("max_change", 100)),
             headless=bool(browser.get("headless", False)),
             slow_mo=int(browser.get("slow_mo", 250)),
             max_retry=int(browser.get("max_retry", 5)),
