@@ -79,6 +79,11 @@ class Settings:
         google = _get(data, "google", default={}) or {}
         paths = _get(data, "paths", default={}) or {}
         buyma = _get(data, "app", "buyma", default={}) or {}
+        sheet_url = str(google.get("sheet_url", "")).strip()
+        if not sheet_url or sheet_url == "YOUR_GOOGLE_SHEET_URL":
+            raise ValueError(
+                "config.yaml의 google.sheet_url에 BESTSHIP의 Google Sheets URL을 입력하세요."
+            )
 
         price_selector = selectors.get("product_price", {})
         if isinstance(price_selector, dict):
@@ -103,7 +108,7 @@ class Settings:
             page_wait_ms=int(browser.get("page_wait_ms", 1500)),
             chrome_paths=[str(v) for v in (browser.get("executable_paths") or [])],
             buyma_base_url=str(buyma.get("base_url", "https://personal-shopper-api.buyma.com")).rstrip("/"),
-            google_sheet_url=str(google.get("sheet_url", "")),
+            google_sheet_url=sheet_url,
             google_price_sheet=str(google.get("price_sheet", "[2]최저가")),
             google_history_sheet=str(google.get("history_sheet", "[5] 최저가 적용이력")),
             google_url_column=str(google.get("url_column", "URL")),
