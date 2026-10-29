@@ -103,7 +103,7 @@ def main() -> int:
             print("payload가 없거나 상품 ID가 일치하지 않는 상품은 변경하지 않습니다.")
             print("BUYMA API 요청 접수는 실제 반영 완료를 뜻하지 않습니다.")
 
-        delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
+        delta = ask_amount("경쟁 최저가보다 낮출 금액", 10)
         maximum = ask_amount("허용할 최대 가격 인하 폭", 100)
         if apply:
             confirm = input(f"실제 API 요청을 승인하려면 APPLY-{delta}-{maximum} 입력: ").strip()
