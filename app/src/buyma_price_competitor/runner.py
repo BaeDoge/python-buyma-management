@@ -18,11 +18,6 @@ def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def id_store_path(settings):
-    """로그인 없이 migration에서 생성한 BestShip 상품 ID 저장소."""
-    return settings.product_payloads.with_name("buyma_product_ids.json")
-
-
 async def run_price_competition(
     settings,
     logger,
@@ -47,15 +42,6 @@ async def run_price_competition(
         return
     if settings.google_url_column not in df.columns:
         raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
-
-    # 로그인 없는 migration 결과. DRY RUN에서는 이 파일만 있으면 된다.
-    id_path = id_store_path(settings)
-    discovered_ids: dict[str, Any] = {}
-    if id_path.exists():
-        try:
-            discovered_ids = load(id_path)
-        except Exception as exc:
-            logger.warning("상품 ID 저장소를 읽지 못했습니다: %s", exc)
 
     # 가격 변경은 BUYMA Personal Shopper API로만 수행한다.
     # 웹 로그인/편집 화면 자동화는 사용하지 않는다.
@@ -207,15 +193,6 @@ async def run_price_competition(
                         decision.reason,
                     )
 
-                    # 로그인 없는 migration 결과가 실제로 저장되어 있는지도 보여준다.
-                    if product_id in discovered_ids:
-                        logger.info("  상품 ID 저장소 확인: %s", product_id)
-                    else:
-                        logger.warning(
-                            "  상품 ID가 migration 저장소에 없습니다: %s",
-                            product_id,
-                        )
-
                     if decision.reason == "이미 최저가":
                         result["적용 여부"] = None
                         already_lowest += 1
@@ -257,11 +234,6 @@ async def run_price_competition(
                         )
                         result["request_uid"] = request_uid
                         result["request_received_at"] = request_received_at
-                        if product_id in discovered_ids:
-                            discovered_ids[product_id]["last_attempted_price"] = decision.new_price
-                            discovered_ids[product_id]["last_attempted_at"] = now_text()
-                            discovered_ids[product_id]["last_request_uid"] = request_uid
-                            discovered_ids[product_id]["last_request_received_at"] = request_received_at
                         # Save the request metadata, but do not mutate the stored product price:
                         # API acceptance is asynchronous and does not prove the listing updated.
                         payload_entry["last_request_uid"] = request_uid
@@ -283,8 +255,6 @@ async def run_price_competition(
         finally:
             await browser.close()
 
-    if apply and discovered_ids:
-        save(id_path, discovered_ids)
     if apply and payloads:
         save(settings.product_payloads, payloads)
 
