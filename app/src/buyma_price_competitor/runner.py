@@ -100,21 +100,40 @@ async def run_price_competition(
             if not rows:
                 logger.warning("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
 
+            target_found = False
             for row_index, url in enumerate(rows, start=1):
-                logger.info("[%s/%s] URL: %s", row_index, len(rows), url)
+                logger.info(
+                    "[%s/%s] URL%s: %s",
+                    row_index,
+                    len(rows),
+                    " (단일 상품 검색)" if target_product_id else "",
+                    url,
+                )
 
-                if not await collector.open_public(page, url):
-                    results.append({
-                        "URL": url,
-                        "적용 여부": False,
-                        "비고": "공개 페이지 접속 실패",
-                    })
-                    skipped += 1
+                try:
+                    if not await collector.open_public(page, url):
+                        logger.warning("  공개 페이지 접속 실패. 다음 URL로 넘어갑니다.")
+                        if not target_product_id:
+                            results.append({
+                                "URL": url,
+                                "적용 여부": False,
+                                "비고": "공개 페이지 접속 실패",
+                            })
+                            skipped += 1
+                        continue
+                    products = await collector.collect(page)
+                except Exception as exc:
+                    logger.warning("  공개 페이지 처리 실패. 다음 URL로 넘어갑니다: %s", exc)
+                    if not target_product_id:
+                        results.append({
+                            "URL": url,
+                            "적용 여부": False,
+                            "비고": f"공개 페이지 처리 실패: {exc}",
+                        })
+                        skipped += 1
                     continue
 
-                products = await collector.collect(page)
                 valid = [p for p in products if p.price is not None]
-
                 logger.info(
                     "  상품 %s개 / BestShip 후보 %s개",
                     len(valid),
@@ -122,16 +141,43 @@ async def run_price_competition(
                 )
 
                 if not valid:
-                    results.append({"URL": url, "적용 여부": False, "비고": "상품 없음"})
-                    skipped += 1
+                    if not target_product_id:
+                        results.append({"URL": url, "적용 여부": False, "비고": "상품 없음"})
+                        skipped += 1
                     continue
+
+                if target_product_id:
+                    # 지정 ID가 공개 카드에 나타났는지를 먼저 확인한다.
+                    # 판매자 판별이 실패해도 다른 492개 URL을 계속 뒤지지 않도록 한다.
+                    matched = [
+                        p for p in valid
+                        if str(p.product_id or "") == str(target_product_id)
+                    ]
+                    if not matched:
+                        continue
+                    target_found = True
+                    own_products = [p for p in matched if collector.is_own_seller(p)]
+                    if not own_products:
+                        results.append({
+                            "URL": url,
+                            "상품ID": target_product_id,
+                            "적용 여부": False,
+                            "비고": (
+                                "상품 ID는 찾았지만 BestShip 판매자 상품으로 확인되지 않아 "
+                                "안전상 변경하지 않았습니다."
+                            ),
+                        })
+                        logger.warning(
+                            "상품 ID %s는 찾았지만 BestShip 판매자 확인 실패. 여기서 검색을 종료합니다.",
+                            target_product_id,
+                        )
+                        break
+                else:
+                    own_products = [p for p in valid if collector.is_own_seller(p)]
 
                 competitor_prices = [
                     p.price for p in valid if not collector.is_own_seller(p)
                 ]
-                own_products = [p for p in valid if collector.is_own_seller(p)]
-                if target_product_id:
-                    own_products = [p for p in own_products if str(p.product_id) == str(target_product_id)]
 
                 if not own_products:
                     logger.warning(
@@ -149,10 +195,13 @@ async def run_price_competition(
                 if not competitor_prices:
                     results.append({
                         "URL": url,
+                        "상품ID": target_product_id or "",
                         "적용 여부": False,
                         "비고": "경쟁 판매자 없음",
                     })
                     skipped += 1
+                    if target_product_id:
+                        break
                     continue
 
                 min_shop = min(competitor_prices)
@@ -179,13 +228,12 @@ async def run_price_competition(
                         skipped += 1
                         continue
 
-                    if not own.product_id:
+                    product_id = str(own.product_id or "")
+                    if not product_id:
                         result["비고"] = "공개 카드에서 상품 ID 확인 실패"
                         results.append(result)
                         skipped += 1
                         continue
-
-                    product_id = str(own.product_id)
 
                     decision = decide(current, min_shop, delta, maximum)
                     result["신규가"] = decision.new_price
@@ -212,7 +260,6 @@ async def run_price_competition(
                         results.append(result)
                         continue
 
-                    # 단일 상품 테스트는 미리보기 이후 가격이 달라졌다면 실제 요청을 중단한다.
                     if apply and expected_new_price is not None and int(decision.new_price) != int(expected_new_price):
                         result["비고"] = (
                             f"미리보기 가격과 달라 요청 중단: 미리보기={expected_new_price:,}, "
@@ -226,15 +273,12 @@ async def run_price_competition(
                         )
                         continue
 
-                    # DRY RUN에서는 API 요청을 보내지 않는다.
                     if not apply:
                         result["비고"] = f"DRY RUN / {decision.reason}"
                         results.append(result)
                         continue
 
                     try:
-                        # 가격 변경이 필요한 상품에 한해서만 판매자 편집 페이지를 열고
-                        # 최신 원본 데이터를 받아 API payload로 변환한다.
                         from payload_migration import capture_payload
                         live_data = await capture_payload(page, product_id, settings, logger)
                         if live_data.get("auth_lost"):
@@ -262,8 +306,6 @@ async def run_price_competition(
                             raise RuntimeError(
                                 f"최신 payload 상품 ID 불일치: {live_product.get('id')} != {product_id}"
                             )
-                        # 판매자 원본 가격과 공개 목록 가격이 다르면 stale/타임세일 등일 수 있다.
-                        # 가격만 변경하는 API에 오래되거나 다른 상태의 payload를 보내지 않는다.
                         if int(live_product.get("price") or 0) != current:
                             raise RuntimeError(
                                 "공개 상품 가격과 판매자 원본 기본 가격이 일치하지 않습니다. "
@@ -289,7 +331,6 @@ async def run_price_competition(
                         )
                         result["request_uid"] = request_uid
                         result["request_received_at"] = request_received_at
-                        # API 접수는 실제 상품 반영 완료와 구분한다.
                         result["원본 데이터 조회"] = "실시간 조회 및 필수 필드 검증 완료"
                         changed += 1
                         logger.info(
@@ -302,6 +343,26 @@ async def run_price_competition(
                         logger.exception("  API 가격 변경 실패: %s", product_id)
 
                     results.append(result)
+
+                # 단일 상품 테스트는 목표 ID가 발견된 URL 하나만 처리하고 즉시 종료한다.
+                if target_product_id:
+                    logger.info("단일 상품 %s 처리 완료. 추가 URL은 조회하지 않습니다.", target_product_id)
+                    break
+
+            if target_product_id and not target_found:
+                results.append({
+                    "상품ID": target_product_id,
+                    "적용 여부": False,
+                    "비고": (
+                        f"Google Sheets의 {len(rows)}개 URL을 확인했지만 "
+                        "해당 상품 ID를 찾지 못했습니다."
+                    ),
+                })
+                logger.warning(
+                    "단일 상품 %s를 %s개 URL에서 찾지 못했습니다.",
+                    target_product_id,
+                    len(rows),
+                )
 
         finally:
             await browser.close()
