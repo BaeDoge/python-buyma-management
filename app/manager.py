@@ -1,14 +1,11 @@
-"""사용자용 단일 메뉴 진입점.
-
-기본 작업은 DRY RUN이며, 실제 BUYMA 상품 변경은 준비된 payload와
-사용자의 명시적 확인이 모두 있어야만 실행한다.
-"""
+"""BUYMA BESTSHIP price manager: one simple menu for collection and pricing."""
 from __future__ import annotations
 
 import asyncio
+import csv
 import subprocess
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,73 +15,112 @@ if str(SRC) not in sys.path:
 if str(ROOT / "app") not in sys.path:
     sys.path.insert(0, str(ROOT / "app"))
 
-from buyma_price_competitor.buyma_api import BuymaClient  # noqa: E402
 from buyma_price_competitor.config import Settings  # noqa: E402
 from buyma_price_competitor.logging_utils import setup_logging  # noqa: E402
-from buyma_price_competitor.payload_store import load  # noqa: E402
 from buyma_price_competitor.runner import run_price_competition  # noqa: E402
 
 
-def ask_positive_int(label: str, default: int) -> int:
+def ask_amount(label: str, default: int) -> int:
     while True:
-        raw = input(f"{label} [기본값 {default:,}]: ").strip()
-        if not raw:
-            value = default
-        else:
-            try:
-                value = int(raw.replace(",", ""))
-            except ValueError:
-                print("숫자로 입력해 주세요.")
-                continue
-        if value < 1:
+        raw = input(f"{label} [기본 {default:,}엔]: ").strip()
+        try:
+            value = default if not raw else int(raw.replace(",", ""))
+        except ValueError:
+            print("숫자로 입력해 주세요.")
+            continue
+        if value <= 0:
             print("1 이상의 금액을 입력해 주세요.")
             continue
         return value
 
 
-def count_valid_payloads(settings: Settings) -> tuple[int, int]:
-    """Return (valid payload count, total entries); does not make API requests."""
-    if not settings.product_payloads.exists():
-        return 0, 0
-    try:
-        payloads = load(settings.product_payloads)
-    except Exception as exc:
-        raise RuntimeError(
-            f"상품 데이터 파일을 읽을 수 없습니다: {settings.product_payloads} ({type(exc).__name__})"
-        ) from exc
-
-    client = BuymaClient(settings.buyma_tokens, settings.buyma_base_url)
-    valid = 0
-    for product_id, entry in payloads.items():
-        if not isinstance(entry, dict) or not isinstance(entry.get("product"), dict):
-            continue
-        try:
-            client.validate_payload(
-                {"product": entry["product"]},
-                expected_product_id=str(product_id),
-            )
-        except (ValueError, TypeError):
-            continue
-        valid += 1
-    return valid, len(payloads)
+def run_script(script: str, label: str) -> None:
+    path = ROOT / "app" / script
+    if not path.exists():
+        print(f"실행 파일을 찾을 수 없습니다: {path}")
+        return
+    print(f"\n[{label}] 시작합니다.")
+    result = subprocess.run([sys.executable, str(path)], cwd=ROOT)
+    print(f"[{label}] 종료 코드: {result.returncode}")
 
 
-def run_comparison(settings: Settings, logger, *, apply: bool, delta: int, max_change: int) -> None:
-    logger.info(
-        "=== BUYMA 가격 경쟁 시작: %s | delta=%s | max_change=%s ===",
-        "APPLY" if apply else "DRY RUN",
-        delta,
-        max_change,
-    )
-    asyncio.run(
+def execute(settings: Settings, logger, *, apply: bool, delta: int, max_change: int,
+            product_id: str | None = None) -> list[dict[str, Any]]:
+    return asyncio.run(
         run_price_competition(
-            settings,
-            logger,
-            apply=apply,
-            price_delta=delta,
-            max_change=max_change,
+            settings, logger, apply=apply, price_delta=delta,
+            max_change=max_change, target_product_id=product_id,
         )
+    ) or []
+
+
+def find_product_result(results: list[dict[str, Any]], product_id: str) -> dict[str, Any] | None:
+    for row in results:
+        if str(row.get("상품ID") or "") == str(product_id):
+            return row
+    return None
+
+
+def run_single_product_test(settings: Settings, logger) -> None:
+    """Preview one selected product, then request one real API update only after exact confirmation."""
+    product_id = input("테스트할 BUYMA 상품 ID: ").strip()
+    if not product_id.isdigit():
+        print("상품 ID는 숫자로 입력해 주세요.")
+        return
+
+    delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
+    max_change = ask_amount("허용할 최대 인하 폭", settings.max_change)
+
+    print(f"\n상품 {product_id} 하나만 가격을 조회합니다. 먼저 DRY RUN으로 목표가를 계산합니다.")
+    preview = execute(
+        settings, logger, apply=False, delta=delta,
+        max_change=max_change, product_id=product_id,
     )
+    row = find_product_result(preview, product_id)
+    if not row:
+        print(f"상품 {product_id}의 가격 비교 결과를 찾지 못했습니다. URL 수집 결과와 상품 ID를 확인하세요.")
+        return
+
+    current = row.get("현재가")
+    target = row.get("신규가")
+    lowest = row.get("최저가")
+    print("\n[단일 상품 변경 미리보기]")
+    print(f"상품 ID : {product_id}")
+    print(f"현재 가격: {current if current is not None else '-'} JPY")
+    print(f"경쟁 최저가: {lowest if lowest is not None else '-'} JPY")
+    print(f"변경 예정가: {target if target is not None else '-'} JPY")
+    print(f"판정: {row.get('비고', '-')}")
+    if target is None:
+        print("변경할 가격이 없어 실제 API 요청은 보내지 않았습니다.")
+        return
+
+    print("\n주의: 다음 확인을 통과하면 BUYMA 공식 API로 이 상품 하나의 가격 변경 요청을 전송합니다.")
+    confirmation = input(f"실제 변경하려면 CHANGE-{product_id}-{target} 를 입력하세요: ").strip()
+    if confirmation != f"CHANGE-{product_id}-{target}":
+        print("확인 문구가 일치하지 않아 취소했습니다. BUYMA 가격은 변경되지 않았습니다.")
+        return
+
+    applied = execute(
+        settings, logger, apply=True, delta=delta,
+        max_change=max_change, product_id=product_id,
+    )
+    applied_row = find_product_result(applied, product_id)
+    if applied_row:
+        print(f"결과: {applied_row.get('비고', '-')}")
+    else:
+        print("API 요청 결과를 찾지 못했습니다. logs/와 reports/를 확인하세요.")
+
+
+def run_all_price_changes(settings: Settings, logger) -> None:
+    delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
+    max_change = ask_amount("허용할 최대 인하 폭", settings.max_change)
+    print("\n[전체 가격 변경]")
+    print("Google Sheet에 등록된 전체 URL 중 조건에 맞는 모든 준비된 상품에 API 요청을 보냅니다.")
+    confirmation = input(f"전체 변경을 승인하려면 APPLY-ALL-{delta}-{max_change} 를 입력하세요: ").strip()
+    if confirmation != f"APPLY-ALL-{delta}-{max_change}":
+        print("확인 문구가 일치하지 않아 취소했습니다.")
+        return
+    execute(settings, logger, apply=True, delta=delta, max_change=max_change)
 
 
 def main() -> int:
@@ -92,84 +128,47 @@ def main() -> int:
         settings = Settings.load()
         logger = setup_logging(settings.logs_dir)
     except Exception as exc:
-        print(f"초기 설정을 읽지 못했습니다: {exc}")
-        print("config.example.yaml을 config.yaml로 복사한 뒤 설정을 확인하세요.")
-        input("Enter를 누르면 종료합니다.")
+        print(f"설정 오류: {exc}")
+        print("config.example.yaml을 config.yaml로 복사하고 Google Sheet 설정을 입력하세요.")
         return 2
 
     while True:
-        print("\n" + "=" * 62)
-        print("BUYMA 최저가 관리")
-        print(f"구글 시트: {settings.google_price_sheet} / URL 컬럼: {settings.google_url_column}")
-        print("=" * 62)
-        print("1. 가격 비교 및 결과 확인 (DRY RUN, 실제 가격 변경 없음)")
-        print("2. 가격 비교 후 조건에 맞는 상품 가격 변경 (BUYMA API)")
-        print("3. 연결 복구 / 선택적 상품 데이터 준비")
+        print("\n" + "=" * 54)
+        print("BUYMA BESTSHIP 최저가 관리")
+        print("=" * 54)
+        print("1. 상품 ID 수집")
+        print("2. 상품 payload 수집")
+        print("3. 가격 비교 미리보기 (실제 변경 없음)")
+        print("4. 단일 상품 테스트 (선택한 상품 1개만 실제 변경)")
+        print("5. 전체 상품 가격 변경")
         print("0. 종료")
         choice = input("선택: ").strip()
 
-        if choice == "0":
-            return 0
-        if choice == "3":
-            print("\\n연결 복구와 선택적 데이터 준비 도구를 엽니다.")
-            print("평소 가격 비교에는 이 메뉴를 실행할 필요가 없습니다.")
-            subprocess.run([sys.executable, str(ROOT / "app" / "setup_once.py")], cwd=ROOT, check=False)
-            continue
-        if choice not in {"1", "2"}:
-            print("1, 2, 3 또는 0을 선택해 주세요.")
-            continue
-
-        apply = choice == "2"
-        if apply:
-            print("\n[주의] 이 모드는 BUYMA 상품 가격 변경 API 요청을 실제로 보냅니다.")
-            print("API 접수 후 반영까지 시간이 걸릴 수 있으며, 요청 접수는 반영 완료를 뜻하지 않습니다.")
-            try:
-                if not settings.buyma_tokens.exists():
-                    print(f"OAuth 토큰 파일이 없습니다: {settings.buyma_tokens}")
-                    print("먼저 OAuth 초기 연결을 진행하세요.")
-                    input("Enter를 누르면 메뉴로 돌아갑니다.")
-                    continue
-                token_client = BuymaClient(settings.buyma_tokens, settings.buyma_base_url)
-                token_client.validate_token_file()
-                valid_count, total_count = count_valid_payloads(settings)
-            except Exception as exc:
-                print(f"실제 적용 사전 점검 실패: {exc}")
-                input("Enter를 누르면 메뉴로 돌아갑니다.")
-                continue
-            if valid_count == 0:
-                print("유효한 전체 상품 payload가 없습니다. 실제 가격 변경을 중단했습니다.")
-                print("data/buyma_products.json에 BUYMA API 필수 필드를 갖춘 product 객체가 필요합니다.")
-                input("Enter를 누르면 메뉴로 돌아갑니다.")
-                continue
-            print(f"유효한 수정용 payload: {valid_count:,} / 저장 항목 {total_count:,}")
-            print("payload가 없는 상품은 가격 변경 대상에서 자동 제외됩니다.")
-
-        delta = ask_positive_int("경쟁 최저가보다 낮출 금액(JPY, 엔)", settings.price_delta)
-        max_change = ask_positive_int("허용할 최대 인하 폭(JPY, 엔)", settings.max_change)
-
-        if apply:
-            confirmation = input(
-                f"실제 API 요청을 진행하려면 APPLY-{delta}-{max_change} 를 정확히 입력하세요: "
-            ).strip()
-            if confirmation != f"APPLY-{delta}-{max_change}":
-                print("확인이 일치하지 않아 실제 변경을 취소했습니다.")
-                continue
-
         try:
-            run_comparison(
-                settings,
-                logger,
-                apply=apply,
-                delta=delta,
-                max_change=max_change,
-            )
-            print("\n작업이 끝났습니다. logs/와 reports/에서 상세 결과를 확인하세요.")
+            if choice == "0":
+                return 0
+            if choice == "1":
+                run_script("migration.py", "상품 ID 수집")
+            elif choice == "2":
+                run_script("payload_migration.py", "상품 payload 수집")
+            elif choice == "3":
+                delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
+                maximum = ask_amount("허용할 최대 인하 폭", settings.max_change)
+                execute(settings, logger, apply=False, delta=delta, max_change=maximum)
+                print("미리보기 완료. reports/의 CSV에서 상품별 결과를 확인하세요.")
+            elif choice == "4":
+                run_single_product_test(settings, logger)
+            elif choice == "5":
+                run_all_price_changes(settings, logger)
+            else:
+                print("0~5 중에서 선택해 주세요.")
         except KeyboardInterrupt:
-            print("\n사용자가 실행을 중단했습니다.")
+            print("\n현재 작업을 중단했습니다.")
         except Exception as exc:
-            logger.exception("가격 비교 실행 실패")
-            print(f"실행 실패: {type(exc).__name__}: {exc}")
-        input("Enter를 누르면 메뉴로 돌아갑니다.")
+            logger.exception("작업 실패")
+            print(f"작업 실패: {type(exc).__name__}: {exc}")
+
+        input("\nEnter를 누르면 메뉴로 돌아갑니다.")
 
 
 if __name__ == "__main__":
