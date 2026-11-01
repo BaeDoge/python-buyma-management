@@ -98,7 +98,7 @@ class Settings:
             own_seller_name=str(seller.get("name", "BestShip")),
             own_seller_id=str(seller.get("id", "12217668")),
             price_delta=int(price_cfg.get("delta", 10)),
-            max_change=int(price_cfg.get("max_change", 100)),
+            max_change=int(price_cfg.get("max_change", 50)),
             headless=bool(browser.get("headless", False)),
             slow_mo=int(browser.get("slow_mo", 250)),
             max_retry=int(browser.get("max_retry", 5)),
