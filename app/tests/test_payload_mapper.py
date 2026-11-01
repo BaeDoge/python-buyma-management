@@ -85,3 +85,13 @@ def test_does_not_invent_unknown_fields():
 def test_rejects_mismatched_product_id():
     _, missing = convert_source_product({"id": 456}, "123")
     assert "id(product ID mismatch)" in missing
+
+
+def test_maps_buyma_documented_public_status_to_publish_control():
+    source = sample_source()
+    source["status"] = "public"
+
+    product, missing = convert_source_product(source, "123")
+
+    assert product["control"] == "publish"
+    assert missing == []
