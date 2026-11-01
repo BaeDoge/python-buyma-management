@@ -9,7 +9,7 @@ app:
 
   price:
     delta: 10
-    max_change: 100
+    max_change: 50
 
   browser:
     headless: false
