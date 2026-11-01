@@ -1,7 +1,8 @@
-"""Map the captured BUYMA seller-page product schema to Product API.
+"""Convert the captured BUYMA seller edit data to Product API format.
 
-The mapping below is based on the actual /rorapi/sell/products/{id} fields.
-Unknown stock states are rejected; price updates must not silently rewrite inventory.
+Mappings are based on BUYMA's Product API specification and the observed
+/rorapi/sell/products/{id} source schema. Unknown/ambiguous inventory data fails
+closed because this is a price-only update and inventory must remain unchanged.
 """
 from __future__ import annotations
 
@@ -27,10 +28,10 @@ def _date(value: Any) -> str | None:
 
 
 def _area_id(value: Any) -> str | None:
+    # BUYMA areas.csv IDs consist of area_cd followed by city_cd.
     if not isinstance(value, dict):
         return None
-    area = value.get("area_cd")
-    city = value.get("city_cd")
+    area, city = value.get("area_cd"), value.get("city_cd")
     if area in (None, "") or city in (None, ""):
         return None
     return f"{area}{city}"
@@ -43,7 +44,6 @@ def _images(source: Any) -> list[dict[str, Any]] | None:
     for index, item in enumerate(source, 1):
         if not isinstance(item, dict):
             return None
-        # zoom_url is the original full-size BUYMA image; preview_url is fallback.
         path = item.get("zoom_url") or item.get("preview_url")
         if not isinstance(path, str) or not path.startswith("https://"):
             return None
@@ -52,8 +52,7 @@ def _images(source: Any) -> list[dict[str, Any]] | None:
 
 
 def _options(source: dict[str, Any]) -> list[dict[str, Any]] | None:
-    colors = source.get("colors") or []
-    sizes = source.get("sizes") or []
+    colors, sizes = source.get("colors"), source.get("sizes")
     if not isinstance(colors, list) or not isinstance(sizes, list):
         return None
     result: list[dict[str, Any]] = []
@@ -69,101 +68,92 @@ def _options(source: dict[str, Any]) -> list[dict[str, Any]] | None:
             }
             if kind == "size":
                 details = item.get("details") or []
+                if not isinstance(details, list):
+                    return None
                 if details:
-                    if not isinstance(details, list):
-                        return None
-                    option["details"] = [
-                        {"key": str(d["name"]), "value": str(d["value"])}
-                        for d in details
-                        if isinstance(d, dict) and d.get("name") and d.get("value") not in (None, "")
-                    ]
-                    if len(option["details"]) != len(details):
-                        return None
+                    mapped = []
+                    for detail in details:
+                        if not isinstance(detail, dict) or not detail.get("name") or detail.get("value") in (None, ""):
+                            return None
+                        mapped.append({"key": str(detail["name"]), "value": str(detail["value"])})
+                    option["details"] = mapped
             result.append(option)
-    # BUYMA API requires options as an array, even for a one-value product.
+    # BUYMA requires the options array. The source always contains at least one
+    # color/size entry for the captured records; do not invent missing options.
     return result or None
 
 
-def _variants(source: dict[str, Any], options: list[dict[str, Any]]) -> tuple[list[dict[str, Any]] | None, int | None, list[str]]:
-    colors = source.get("colors") or []
-    sizes = source.get("sizes") or []
-    matrix = source.get("colorsizes")
-    if not isinstance(matrix, list) or not matrix:
+def _variants(source: dict[str, Any]) -> tuple[list[dict[str, Any]] | None, int | None, list[str]]:
+    colors, sizes, matrix = source.get("colors"), source.get("sizes"), source.get("colorsizes")
+    if not isinstance(colors, list) or not isinstance(sizes, list) or not isinstance(matrix, list) or not matrix:
         return None, None, ["variants(colorsizes 누락)"]
 
-    color_count = max(1, len(colors))
-    size_count = max(1, len(sizes))
+    color_count, size_count = max(1, len(colors)), max(1, len(sizes))
     if len(matrix) != color_count or any(not isinstance(row, list) or len(row) != size_count for row in matrix):
         return None, None, ["variants(colorsizes 조합 수 불일치)"]
 
-    size_values = [str(x["name"]) for x in sizes] if sizes else ["FREE"]
-    color_values = [str(x["name"]) for x in colors] if colors else ["色指定なし"]
-    result: list[dict[str, Any]] = []
-    available_count = 0
-    for color_index, row in enumerate(matrix):
-        for size_index, cell in enumerate(row):
+    color_names = [str(x.get("name")) for x in colors] if colors else ["色指定なし"]
+    size_names = [str(x.get("name")) for x in sizes] if sizes else ["FREE"]
+    variants: list[dict[str, Any]] = []
+    has_purchase_for_order = False
+
+    for ci, row in enumerate(matrix):
+        for si, cell in enumerate(row):
             if not isinstance(cell, dict) or cell.get("selectable") not in (0, 1, False, True):
                 return None, None, ["variants(selectable 상태 불명확)"]
+            # The seller-page selectable flag indicates whether the combination
+            # can be selected. Available combinations use purchase_for_order;
+            # unavailable combinations use out_of_stock. Never invent stock-in-hand.
             available = int(cell["selectable"]) == 1
+            has_purchase_for_order |= available
             variant_options = []
             if sizes:
-                variant_options.append({"type": "size", "value": size_values[size_index]})
+                variant_options.append({"type": "size", "value": size_names[si]})
             if colors:
-                variant_options.append({"type": "color", "value": color_values[color_index]})
+                variant_options.append({"type": "color", "value": color_names[ci]})
             if not variant_options:
                 return None, None, ["variants 옵션 연결 실패"]
-            result.append({
+            variants.append({
                 "options": variant_options,
                 "stock_type": "purchase_for_order" if available else "out_of_stock",
                 "stocks": None,
             })
-            available_count += int(available)
 
-    if available_count:
-        raw_quantity = source.get("capacity_amount")
-        try:
-            quantity = int(raw_quantity)
-        except (TypeError, ValueError):
-            return None, None, ["order_quantity(capacity_amount 확인 불가)"]
-        if quantity < 1:
-            return None, None, ["order_quantity(capacity_amount가 1 미만)"]
-        return result, quantity, []
-    return result, None, []
+    if not has_purchase_for_order:
+        return variants, None, []
+    try:
+        quantity = int(source.get("capacity_amount"))
+    except (TypeError, ValueError):
+        return None, None, ["order_quantity(capacity_amount 확인 불가)"]
+    if quantity < 1:
+        return None, None, ["order_quantity(capacity_amount가 1 미만)"]
+    return variants, quantity, []
 
 
 def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dict[str, Any], list[str]]:
-    """Return (candidate API product, unresolved required fields)."""
     if not isinstance(source, dict):
         raise TypeError("source_product_data must be an object")
 
     status = str(source.get("status") or "").lower()
-    control = {"publish": "publish", "public": "publish",
-               "draft": "draft", "buyer_suspended": "suspend"}.get(status)
-
+    control = {"publish": "publish", "draft": "draft", "buyer_suspended": "suspend"}.get(status)
     brand = source.get("brand")
     brand_id = brand.get("id") if isinstance(brand, dict) else source.get("brand_id")
 
-    raw_images = _images(source.get("item_images"))
-    shipping_raw = source.get("shipping_methods")
+    images = _images(source.get("item_images"))
+    raw_shipping = source.get("shipping_methods")
     shipping_methods = None
-    if isinstance(shipping_raw, list):
+    if isinstance(raw_shipping, list):
         shipping_methods = []
-        for item in shipping_raw:
+        for item in raw_shipping:
             if not isinstance(item, dict) or item.get("id") is None:
                 shipping_methods = None
                 break
             shipping_methods.append({"shipping_method_id": int(item["id"])})
 
     options = _options(source)
-    variants, order_quantity, variant_errors = _variants(source, options or []) if options else (None, None, ["options(colors/sizes 확인 실패)"])
+    variants, order_quantity, variant_errors = _variants(source)
 
-    purchase_area = _area_id(source.get("purchase_area"))
-    shipping_area = _area_id(source.get("shipping_area"))
-    duty_map = {"prepaid": "included", "buyer": "refundable", "none": "none"}
-    duty = duty_map.get(str(source.get("duty_type") or "").lower())
-    if source.get("include_duty") is False:
-        duty = "none"
-
+    raw_price = source.get("price")
     product: dict[str, Any] = {
         "id": int(product_id),
         "control": control,
@@ -171,16 +161,18 @@ def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dic
         "comments": source.get("comment"),
         "brand_id": int(brand_id) if str(brand_id or "").isdigit() else None,
         "category_id": int(source["category_id"]) if str(source.get("category_id") or "").isdigit() else None,
-        "price": int(source["price"]) if str(source.get("price") or "").isdigit() else None,
+        "price": int(raw_price) if str(raw_price or "").isdigit() else None,
         "available_until": _date(source.get("period")),
-        "buying_area_id": purchase_area,
-        "shipping_area_id": shipping_area,
-        "images": raw_images,
+        "buying_area_id": _area_id(source.get("purchase_area")),
+        "shipping_area_id": _area_id(source.get("shipping_area")),
+        "images": images,
         "shipping_methods": shipping_methods,
         "options": options,
         "variants": variants,
     }
 
+    duty_map = {"prepaid": "included", "buyer": "refundable", "none": "none"}
+    duty = "none" if source.get("include_duty") is False else duty_map.get(str(source.get("duty_type") or "").lower())
     optional = {
         "buying_shop_name": source.get("shop_name"),
         "duty": duty,
@@ -189,16 +181,11 @@ def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dic
         "style_numbers": [{"number": x["number"], "memo": x.get("memo", "")}
                           for x in (source.get("style_numbers") or [])
                           if isinstance(x, dict) and x.get("number")],
-        "size_unit": source.get("size_unit"),
         "colorsize_comments": source.get("variations_note"),
         "order_quantity": order_quantity,
         "shop_urls": deepcopy(source.get("shop_urls") or []),
     }
-    if source.get("size_unit") not in (None, ""):
-        product["size_unit"] = source["size_unit"]
-    elif source.get("size_unit_id") not in (None, 0, "0"):
-        # size_unit_id is an internal numeric master key, not the API string.
-        pass
+    # size_unit_id is a source master ID, not the API's textual size_unit.
     for key, value in optional.items():
         if value not in (None, [], ""):
             product[key] = deepcopy(value)
@@ -213,4 +200,11 @@ def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dic
     if product["id"] != int(product_id):
         missing.append("id(product ID mismatch)")
     missing.extend(variant_errors)
+
+    # Do not turn a time-sale price into an ordinary price update. The public
+    # listing price can be different from product.price while a campaign is live.
+    sale = source.get("timesale")
+    if isinstance(sale, dict) and sale.get("status") == "on":
+        missing.append("active_timesale(타임세일 종료 후 가격 변경 필요)")
+
     return product, sorted(set(missing))
