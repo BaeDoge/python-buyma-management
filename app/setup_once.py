@@ -40,14 +40,14 @@ def main() -> None:
             print("승인 완료 후 이 터미널에서 Ctrl+C로 서버를 종료하면 메뉴로 돌아옵니다.")
             run(
                 "BUYMA OAuth 승인",
-                [python, "-m", "uvicorn", "oauth_server:app", "--host", "127.0.0.1", "--port", "8000"],
+                [python, "-m", "uvicorn", "app.oauth_server:app", "--host", "127.0.0.1", "--port", "8000"],
                 "브라우저에서 BUYMA 계정 인증이 필요합니다.",
                 "토큰 발급을 위한 OAuth endpoint를 사용합니다.",
             )
         elif choice == "2":
             run(
                 "공개 상품 ID 수집",
-                [python, "migration.py"],
+                [python, "app/migration.py"],
                 "하지 않습니다. 공개 페이지를 조회합니다.",
                 "사용하지 않습니다.",
             )
@@ -56,7 +56,7 @@ def main() -> None:
             print("정기 실행에서는 사용하지 마세요. source-only 결과는 API payload가 아닙니다.")
             run(
                 "payload 수집 시도",
-                [python, "payload_migration.py"],
+                [python, "app/payload_migration.py"],
                 "필요합니다. 상품별 편집 페이지를 조회합니다.",
                 "API 가격 변경 요청은 보내지 않습니다.",
             )
