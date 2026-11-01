@@ -235,6 +235,22 @@ async def run_price_competition(
                         continue
 
                     product_id = str(own.product_id)
+
+                    # A live BUYMA time-sale price is not the base product.price.
+                    # Never send a base-price update while the source record says
+                    # a time-sale campaign is active, even if the public card selector
+                    # failed to recognize its sale badge.
+                    payload_entry = payloads.get(product_id)
+                    mapping_missing = (
+                        payload_entry.get("mapping_missing_fields", [])
+                        if isinstance(payload_entry, dict) else []
+                    )
+                    if any(str(field).startswith("active_timesale") for field in mapping_missing):
+                        result["비고"] = "진행 중인 타임세일 상품: 기본 가격 변경 제외"
+                        results.append(result)
+                        skipped += 1
+                        continue
+
                     decision = decide(current, min_shop, delta, maximum)
                     result["신규가"] = decision.new_price
                     result["가격 차이"] = decision.change
