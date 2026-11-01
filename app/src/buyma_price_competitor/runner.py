@@ -223,9 +223,13 @@ async def run_price_competition(
                     }
 
                     if own.is_timesale:
-                        result["비고"] = "타임 세일"
+                        result["비고"] = "타임세일 진행 중: BUYMA 타임세일 종료 전까지 가격 변경 제외"
                         results.append(result)
                         skipped += 1
+                        logger.info(
+                            "  %s | 타임세일 진행 중으로 가격 변경 제외",
+                            own.product_id or "상품 ID 없음",
+                        )
                         continue
 
                     product_id = str(own.product_id or "")
