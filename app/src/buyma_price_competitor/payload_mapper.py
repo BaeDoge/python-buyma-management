@@ -135,7 +135,7 @@ def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dic
         raise TypeError("source_product_data must be an object")
 
     status = str(source.get("status") or "").lower()
-    control = {"publish": "publish", "draft": "draft", "buyer_suspended": "suspend"}.get(status)
+    control = {"public": "publish", "publish": "publish", "draft": "draft", "buyer_suspended": "suspend"}.get(status)
     brand = source.get("brand")
     brand_id = brand.get("id") if isinstance(brand, dict) else source.get("brand_id")
 
