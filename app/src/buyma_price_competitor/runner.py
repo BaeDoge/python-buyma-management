@@ -113,11 +113,20 @@ async def run_price_competition(
             entry = payloads.get(str(target_product_id))
             product = entry.get("product") if isinstance(entry, dict) else None
             if not isinstance(product, dict):
+                status = entry.get("migration_status", "payload record missing") if isinstance(entry, dict) else "record missing"
+                missing = entry.get("mapping_missing_fields", []) if isinstance(entry, dict) else []
+                source_summary = entry.get("source_summary", {}) if isinstance(entry, dict) else {}
+                missing_text = ", ".join(missing) if missing else "공식 API payload 변환 결과 없음"
+                summary_text = (
+                    f"원본 필드: {', '.join(source_summary.get('source_keys', []))}"
+                    if isinstance(source_summary, dict) and source_summary.get("source_keys")
+                    else "원본 필드 요약 없음"
+                )
                 raise RuntimeError(
-                    f"상품 {target_product_id}의 공식 API payload가 없습니다: "
-                    f"{settings.product_payloads}. "
-                    "가격 변경에는 BUYMA Product API 필수 필드를 갖춘 전체 payload가 필요합니다. "
-                    "source_product_data만 저장된 경우에는 아직 API 수정에 사용할 수 없습니다."
+                    f"상품 {target_product_id}는 가격 변경용 API payload가 준비되지 않았습니다. "
+                    f"상태={status}; 미확보 필드={missing_text}; {summary_text}. "
+                    f"저장 파일={settings.product_payloads}. "
+                    "메뉴 2는 원본 데이터를 수집했을 수 있지만, 공식 API 필드 변환까지 성공한 것은 아닙니다."
                 )
             api_client.validate_payload({"product": product}, expected_product_id=str(target_product_id))
 

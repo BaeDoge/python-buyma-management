@@ -94,10 +94,10 @@ def run_single_product_test(settings: Settings, logger) -> None:
         print("변경할 가격이 없어 실제 API 요청은 보내지 않았습니다.")
         return
 
-    print("\n주의: 다음 확인을 통과하면 BUYMA 공식 API로 이 상품 하나의 가격 변경 요청을 전송합니다.")
-    confirmation = input(f"실제 변경하려면 CHANGE-{product_id}-{target} 를 입력하세요: ").strip()
-    if confirmation != f"CHANGE-{product_id}-{target}":
-        print("확인 문구가 일치하지 않아 취소했습니다. BUYMA 가격은 변경되지 않았습니다.")
+    print("\n위 가격으로 BUYMA 상품 하나를 변경합니다.")
+    confirmation = input("실제 가격 변경을 진행할까요? (Y/N): ").strip().lower()
+    if confirmation not in {"y", "yes"}:
+        print("취소했습니다. BUYMA 가격은 변경되지 않았습니다.")
         return
 
     applied = execute(
