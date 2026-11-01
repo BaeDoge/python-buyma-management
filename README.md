@@ -1,80 +1,95 @@
-# BUYMA 최저가 관리 프로그램
+# BUYMA BESTSHIP 최저가 관리
 
-BESTSHIP(seller ID `12217668`)의 Google Sheet 상품 URL을 기준으로 BUYMA 공개 페이지의 가격을 비교하고, 조건에 맞으면 BUYMA Product API로 가격 변경 요청을 보내는 Windows용 Python 프로그램입니다.
+Google Sheet의 `[2]최저가` 탭에 등록된 URL에서 BESTSHIP 상품과 경쟁 판매자의 가격을 비교합니다. 가격 변경은 BUYMA Product API로 요청합니다. 통화 단위는 JPY(엔)입니다.
 
-## 실행 파일은 하나
+## 실행
 
-개발 환경에서 프로젝트 루트에서 실행합니다.
+프로젝트 루트에서 최초 1회:
 
 ```powershell
 uv sync
+```
+
+이후 매번 아래 명령 하나만 실행합니다.
+
+```powershell
 uv run buyma_price_manager.py
 ```
 
-일반 사용자는 루트의 `buyma_price_manager.py`만 실행합니다. 별도의 BAT 파일, `refresh_prices.py`, `setup_once.py` 루트 래퍼는 제공하지 않습니다.
+## 메뉴
 
-메뉴:
+| 메뉴 | 기능 |
+|---|---|
+| 1 | Google Sheet URL에서 BESTSHIP 상품 ID 수집 |
+| 2 | BUYMA 로그인 후 상품 payload 수집 시도 |
+| 3 | 전체 상품 가격 비교 미리보기. 실제 가격 변경 없음 |
+| 4 | 상품 ID 하나를 입력해 미리보기 후 해당 상품 하나만 실제 변경 테스트 |
+| 5 | 조건에 맞는 전체 상품 가격 변경 |
+| 0 | 종료 |
 
-- `1`: 가격 비교 결과 확인(DRY RUN). 가격 변경 API를 호출하지 않습니다.
-- `2`: 가격 비교 후 조건에 맞는 상품의 가격 변경 요청. 전체 payload 검사와 명시적인 확인 문구가 필요합니다.
-- `3`: OAuth 복구 또는 선택적 상품 데이터 준비가 필요한 경우에만 사용하는 유지보수 메뉴.
-- `0`: 종료.
+**처음 실행할 때:** 1 → 2 → 3 순서로 진행합니다. 이후에는 시트 URL을 매번 새로 읽으므로 평소에는 3번(비교) 또는 4번(단일 테스트), 검증 완료 후 5번(전체 변경)만 사용하면 됩니다.
 
-## 초기 설정
+### 단일 상품 테스트 (메뉴 4)
 
-1. `config.example.yaml`을 `config.yaml`로 복사합니다.
-2. Google Sheet URL과 시트/URL 컬럼 설정을 확인합니다.
-3. Google 서비스 계정 JSON을 `secrets/service_account.json`에 저장하고 해당 계정에 대상 시트를 공유합니다.
-4. 기존 BUYMA OAuth 토큰을 `secrets/tokens.json`에 둡니다.
-5. 개발 환경에서 `uv sync`를 실행합니다.
+1. 테스트할 BUYMA 상품 ID를 입력합니다.
+2. 프로그램이 해당 ID만 공개 상품 페이지에서 찾아 현재가/경쟁 최저가/변경 예정가를 계산합니다.
+3. 화면에 표시된 변경 예정가를 확인합니다.
+4. 실제 변경할 때만 `CHANGE-상품ID-변경예정가`를 입력합니다.
+5. 프로그램은 API 요청 직전에 가격을 다시 계산합니다. 미리보기 가격과 달라졌다면 요청을 중단합니다.
 
-`config.yaml`, `.env`, `secrets/`, `data/`, `logs/`, `reports/`는 로컬 설정/고객 데이터이므로 Git에 커밋하거나 다른 구매자와 공유하지 마세요. OAuth는 토큰이 존재하고 유효한 한 일반 가격 비교를 위해 매번 다시 실행하지 않습니다.
+다른 상품은 단일 테스트의 API 변경 대상이 되지 않습니다. 단일 테스트는 해당 상품의 공식 API 전체 payload가 준비되어 있어야 하며, payload가 없거나 필수 필드가 빠져 있으면 요청하지 않습니다.
 
-## Google Sheet 변경
+### 전체 변경 (메뉴 5)
 
-프로그램은 매 실행마다 Google Sheet URL 컬럼을 새로 읽습니다. URL을 추가하거나 삭제하기 위해 별도 migration을 실행할 필요가 없습니다. 빈 URL과 중복 URL은 건너뜁니다.
+전체 변경은 별도 확인 문구 `APPLY-ALL-변경금액-최대인하폭`를 입력해야 진행됩니다. 단일 상품 테스트를 먼저 완료한 뒤 사용하세요.
 
-## 가격 계산
+## 가격 규칙
 
-기본값은 경쟁 최저가보다 10엔(JPY) 낮은 가격이며, 현재가에서 100엔(JPY)을 초과해 인하해야 하는 상품은 건너뜁니다. 실행 메뉴에서 값을 입력할 수 있습니다.
+기본값은 경쟁 최저가보다 10엔 낮게 설정하고, 현재가에서 최대 100엔을 초과해 인하해야 하면 건너뜁니다. 실행할 때 값을 변경할 수 있습니다.
 
-경쟁 매장 가격 비교는 BUYMA 공개 상품 페이지를 사용합니다. 공개 Personal Shopper API에서 경쟁 매장 가격 검색 endpoint를 확인하지 못했기 때문입니다. 가격 변경은 BUYMA 공식 Product API로만 요청합니다.
+- 가격 비교: BUYMA 공개 상품 페이지
+- 실제 가격 변경: BUYMA Personal Shopper Product API
+- API의 HTTP 201 및 `request_uid`는 요청 접수이며 최종 가격 반영 완료를 뜻하지 않습니다. BUYMA 상품 화면에서 반영 여부를 확인해야 합니다.
 
-## API 가격 변경 코드 테스트\n\nBUYMA에 요청을 보내지 않는 단위 테스트는 다음 명령으로 실행합니다. 가짜 HTTP 응답을 사용하므로 실제 상품 가격은 변경되지 않습니다.\n\n```powershell\nuv run pytest app/tests -q\n```\n\n`build_price_update_payload()` 테스트는 저장된 전체 상품 정보 중 `price`만 바뀌는지, 상품 ID가 일치하는지, 필수 필드가 누락되면 요청 전에 중단하는지 확인합니다. 실제 BUYMA 반영 테스트는 유효한 `data/buyma_products.json`이 준비된 뒤 별도 단일 상품으로 진행해야 합니다.\n\n## 중요한 API payload 제한
+## 설정 파일
 
-BUYMA Product API는 가격만 받는 단순 수정 endpoint가 아닙니다. `data/buyma_products.json`에 API 필수 필드를 갖춘 전체 `product` 객체가 있어야 합니다. `source_product_data`만 있거나 필수 필드가 빠진 상품은 가격 변경에서 제외합니다. 빠진 값을 임의로 추측해 보내지 않습니다.
+- `config.yaml`: `config.example.yaml`을 복사해 Google Sheet URL과 시트 설정을 입력
+- `secrets/service_account.json`: Google 서비스 계정 키
+- `secrets/tokens.json`: BUYMA OAuth 토큰
+- `.env`: OAuth 및 BUYMA 웹 로그인 환경변수
 
-실제 API 요청 접수(예: HTTP 201 / `request_uid`)는 최종 가격 반영 완료와 다를 수 있으므로 BUYMA 상품 화면이나 공식 webhook 결과를 확인해야 합니다.
+인증정보와 실제 상품 데이터는 Git에 올리지 않습니다.
 
-공식 문서: [BUYMA Product API](https://specification.personal-shopper-api.buyma.com/en/api/products_json/)
+## 테스트
 
-## 프로젝트 구조
+```powershell
+uv run pytest app/tests -q
+```
+
+이 테스트는 가짜 HTTP 응답을 사용하는 자동화 테스트입니다. BUYMA에 실제 가격 변경 요청을 보내지 않습니다.
+
+## 폴더 구조
 
 ```text
 .
-├── buyma_price_manager.py       # 유일한 사용자 실행 진입점
-├── config.example.yaml          # 설정 템플릿
-├── pyproject.toml               # 의존성
-├── app/
-│   ├── manager.py               # 통합 메뉴
-│   ├── setup_once.py            # 메뉴 3의 유지보수 메뉴
-│   ├── oauth_server.py          # OAuth 서버
-│   ├── migration.py             # 선택적 상품 ID 수집
-│   ├── payload_migration.py     # 선택적 payload 수집 시도
-│   └── src/buyma_price_competitor/
-│       ├── runner.py            # 비교/변경 실행 흐름
-│       ├── buyma_api.py         # 공식 API 클라이언트
-│       ├── google_sheets.py     # Google Sheet 연동
-│       └── pricing.py           # 가격 결정
-├── tools/                       # 개발/유지보수 도구
-├── secrets/                     # 로컬 인증정보(무시됨)
-├── data/                        # 로컬 상품 payload(무시됨)
-├── logs/                        # 실행 로그
-└── reports/                     # 실행별 CSV 결과
+├── buyma_price_manager.py
+├── config.example.yaml
+├── pyproject.toml
+├── uv.lock
+└── app/
+    ├── manager.py
+    ├── migration.py
+    ├── payload_migration.py
+    ├── setup_once.py
+    └── src/buyma_price_competitor/
+        ├── runner.py
+        ├── buyma_api.py
+        ├── config.py
+        ├── google_sheets.py
+        ├── payload_mapper.py
+        ├── payload_store.py
+        ├── pricing.py
+        └── public_products.py
 ```
 
-루트에는 진입점 하나만 두고 기능 구현은 `app/` 아래에 둡니다. OAuth/상품 데이터 준비는 정상적인 가격 비교 경로와 분리되어 있으며, 일반 실행에서 자동으로 호출되지 않습니다.
-
-## 배포
-
-PyInstaller를 통한 Windows EXE 패키징은 별도 검증 단계입니다. 현재 저장소는 개발 실행 흐름을 단순화한 상태이며, EXE가 실제 Windows 환경에서 빌드/실행되는지 확인하기 전에는 완성된 설치 패키지로 간주하지 않습니다. EXE 안에 OAuth 토큰이나 Google 서비스 계정 키를 포함하지 않습니다.
+실행 결과는 `logs/`와 `reports/`, 상품 데이터는 `data/`에 저장됩니다. 이 폴더들은 실행 시 자동 생성되며 저장소에는 포함하지 않습니다.
