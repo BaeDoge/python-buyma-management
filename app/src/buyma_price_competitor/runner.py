@@ -37,12 +37,51 @@ async def run_price_competition(
         settings.google_scopes,
         settings.google_sheet_url,
     )
-    df = sheets.read_df(settings.google_price_sheet)
-    if df.empty:
-        logger.info("Google Sheet에 데이터가 없습니다.")
-        return
-    if settings.google_url_column not in df.columns:
-        raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
+    # 단일 상품은 1단계에서 저장한 상품 ID -> source_url 매핑을 사용한다.
+    # Google Sheet 전체 URL을 다시 읽거나 순회하지 않는다.
+    target_url: str | None = None
+    if target_product_id:
+        id_store_path = settings.product_payloads.with_name("buyma_product_ids.json")
+        if not id_store_path.exists():
+            raise FileNotFoundError(
+                f"상품 ID 저장소가 없습니다: {id_store_path}. 먼저 메뉴 1을 실행하세요."
+            )
+        id_records = load(id_store_path)
+        id_record = id_records.get(str(target_product_id))
+        if not isinstance(id_record, dict) or not id_record.get("source_url"):
+            raise RuntimeError(
+                f"상품 ID {target_product_id}가 수집된 ID 목록에 없거나 원본 URL이 없습니다. "
+                "메뉴 1에서 상품 ID를 다시 수집하세요."
+            )
+        target_url = str(id_record["source_url"]).strip()
+        if not target_url:
+            raise RuntimeError(f"상품 ID {target_product_id}의 source_url이 비어 있습니다.")
+
+        # 단일 상품 테스트는 해당 상품이 속한 URL 하나만 조회한다.
+        rows = [target_url]
+        logger.info("단일 상품 모드: 상품 ID %s / 저장된 URL 1개만 조회", target_product_id)
+    else:
+        df = sheets.read_df(settings.google_price_sheet)
+        if df.empty:
+            logger.info("Google Sheet에 데이터가 없습니다.")
+            return
+        if settings.google_url_column not in df.columns:
+            raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
+        rows = []
+        seen_urls: set[str] = set()
+        for raw_url in df[settings.google_url_column].tolist():
+            if pd.isna(raw_url):
+                continue
+            url = str(raw_url).strip()
+            if not url:
+                continue
+            if url in seen_urls:
+                logger.warning("중복 URL을 건너뜁니다: %s", url)
+                continue
+            seen_urls.add(url)
+            rows.append(url)
+        if limit is not None:
+            rows = rows[:limit]
 
     # 가격 변경은 BUYMA Personal Shopper API로만 수행한다.
     # 웹 로그인/편집 화면 자동화는 사용하지 않는다.
@@ -89,24 +128,7 @@ async def run_price_competition(
         )
 
         try:
-            # Read the current URL column on every run. Ignore blank cells and
-            # duplicate URLs so a repeated row cannot trigger duplicate price requests.
-            rows: list[str] = []
-            seen_urls: set[str] = set()
-            for raw_url in df[settings.google_url_column].tolist():
-                if pd.isna(raw_url):
-                    continue
-                url = str(raw_url).strip()
-                if not url:
-                    continue
-                if url in seen_urls:
-                    logger.warning("중복 URL을 건너뜁니다: %s", url)
-                    continue
-                seen_urls.add(url)
-                rows.append(url)
-
-            if limit is not None:
-                rows = rows[:limit]
+            # rows는 전체 모드에서는 시트 URL 목록, 단일 모드에서는 저장된 URL 한 개다.
 
             if not rows:
                 logger.warning("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
