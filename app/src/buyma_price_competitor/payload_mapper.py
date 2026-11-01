@@ -191,6 +191,9 @@ def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dic
             product[key] = deepcopy(value)
 
     missing = []
+    source_id = source.get("id")
+    if source_id is None or str(source_id) != str(product_id):
+        missing.append("id(product ID mismatch)")
     for key in API_REQUIRED:
         value = product.get(key)
         if value is None or value == "" or (key in {"images", "shipping_methods", "options", "variants"} and not isinstance(value, list)):
