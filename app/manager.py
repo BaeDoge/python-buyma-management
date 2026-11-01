@@ -144,8 +144,8 @@ def main() -> int:
             print(f"유효한 수정용 payload: {valid_count:,} / 저장 항목 {total_count:,}")
             print("payload가 없는 상품은 가격 변경 대상에서 자동 제외됩니다.")
 
-        delta = ask_positive_int("경쟁 최저가보다 낮출 금액(원)", settings.price_delta)
-        max_change = ask_positive_int("허용할 최대 인하 폭(원)", settings.max_change)
+        delta = ask_positive_int("경쟁 최저가보다 낮출 금액(JPY, 엔)", settings.price_delta)
+        max_change = ask_positive_int("허용할 최대 인하 폭(JPY, 엔)", settings.max_change)
 
         if apply:
             confirmation = input(
