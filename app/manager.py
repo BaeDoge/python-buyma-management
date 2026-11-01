@@ -137,11 +137,9 @@ def main() -> int:
         print("\n" + "=" * 54)
         print("BUYMA BESTSHIP 최저가 관리")
         print("=" * 54)
-        print("1. 상품 ID 수집")
-        print("2. 상품 payload 수집")
-        print("3. 가격 비교 미리보기 (실제 변경 없음)")
-        print("4. 단일 상품 테스트 (선택한 상품 1개만 실제 변경)")
-        print("5. 전체 상품 가격 변경")
+        print("1. 전체 상품 가격 비교 미리보기 (실제 변경 없음)")
+        print("2. 단일 상품 가격 변경 테스트")
+        print("3. 전체 상품 가격 변경")
         print("0. 종료")
         choice = input("선택: ").strip()
 
@@ -149,20 +147,16 @@ def main() -> int:
             if choice == "0":
                 return 0
             if choice == "1":
-                run_script("migration.py", "상품 ID 수집")
-            elif choice == "2":
-                run_script("payload_migration.py", "상품 payload 수집")
-            elif choice == "3":
                 delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
                 maximum = ask_amount("허용할 최대 인하 폭", settings.max_change)
                 execute(settings, logger, apply=False, delta=delta, max_change=maximum)
                 print("미리보기 완료. reports/의 CSV에서 상품별 결과를 확인하세요.")
-            elif choice == "4":
+            elif choice == "2":
                 run_single_product_test(settings, logger)
-            elif choice == "5":
+            elif choice == "3":
                 run_all_price_changes(settings, logger)
             else:
-                print("0~5 중에서 선택해 주세요.")
+                print("0~3 중에서 선택해 주세요.")
         except KeyboardInterrupt:
             print("\n현재 작업을 중단했습니다.")
         except Exception as exc:

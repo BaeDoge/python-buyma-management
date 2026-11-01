@@ -1,51 +1,62 @@
 from __future__ import annotations
 
-import json
-
+import pandas as pd
 import pytest
 
-from buyma_price_competitor.runner import resolve_target_url
+from buyma_price_competitor.runner import collect_sheet_urls
 
 
-def test_single_product_uses_only_saved_source_url(tmp_path):
-    id_store = tmp_path / "buyma_product_ids.json"
-    id_store.write_text(
-        json.dumps(
-            {
-                "138317608": {
-                    "product_id": "138317608",
-                    "source_url": "https://www.buyma.com/r/T0SE9%20LCF%200NO/",
-                },
-                "999999999": {
-                    "product_id": "999999999",
-                    "source_url": "https://www.buyma.com/r/another-item/",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+class FakeSheets:
+    def __init__(self, frame):
+        self.frame = frame
+        self.requested_sheet = None
 
-    assert resolve_target_url(id_store, "138317608") == (
-        "https://www.buyma.com/r/T0SE9%20LCF%200NO/"
-    )
+    def read_df(self, sheet_name):
+        self.requested_sheet = sheet_name
+        return self.frame
 
 
-def test_single_product_missing_from_collected_ids_fails_without_fallback(tmp_path):
-    id_store = tmp_path / "buyma_product_ids.json"
-    id_store.write_text(json.dumps({"999999999": {"source_url": "https://example.invalid"}}))
-
-    with pytest.raises(RuntimeError, match="138317608"):
-        resolve_target_url(id_store, "138317608")
+class FakeSettings:
+    google_price_sheet = "prices"
+    google_url_column = "URL"
 
 
-def test_single_product_without_saved_url_fails(tmp_path):
-    id_store = tmp_path / "buyma_product_ids.json"
-    id_store.write_text(json.dumps({"138317608": {"product_id": "138317608"}}))
+def test_urls_are_read_directly_from_sheet_without_id_store():
+    sheets = FakeSheets(pd.DataFrame({
+        "URL": [
+            "https://www.buyma.com/r/item-one/",
+            "https://www.buyma.com/r/item-one/",
+            None,
+            "  https://www.buyma.com/r/item-two/  ",
+            "",
+        ]
+    }))
 
-    with pytest.raises(RuntimeError, match="원본 URL"):
-        resolve_target_url(id_store, "138317608")
+    assert collect_sheet_urls(sheets, FakeSettings()) == [
+        "https://www.buyma.com/r/item-one/",
+        "https://www.buyma.com/r/item-two/",
+    ]
+    assert sheets.requested_sheet == "prices"
 
 
-def test_missing_id_store_fails_and_does_not_scan_sheet(tmp_path):
-    with pytest.raises(FileNotFoundError, match="상품 ID 저장소"):
-        resolve_target_url(tmp_path / "missing.json", "138317608")
+def test_sheet_url_collection_supports_limit():
+    sheets = FakeSheets(pd.DataFrame({
+        "URL": ["https://example.com/1", "https://example.com/2"]
+    }))
+
+    assert collect_sheet_urls(sheets, FakeSettings(), limit=1) == [
+        "https://example.com/1"
+    ]
+
+
+def test_missing_url_column_fails_clearly():
+    sheets = FakeSheets(pd.DataFrame({"other": ["https://example.com"]}))
+
+    with pytest.raises(ValueError, match="URL"):
+        collect_sheet_urls(sheets, FakeSettings())
+
+
+def test_empty_sheet_returns_no_urls():
+    sheets = FakeSheets(pd.DataFrame())
+
+    assert collect_sheet_urls(sheets, FakeSettings()) == []

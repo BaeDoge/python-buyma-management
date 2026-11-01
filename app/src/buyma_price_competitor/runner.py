@@ -9,29 +9,31 @@ from playwright.async_api import async_playwright
 from .browser import launch_chrome
 from .buyma_api import BuymaClient
 from .google_sheets import GoogleSheetClient
-from .payload_store import load, save
 from .pricing import decide
 from .public_products import PublicProductCollector
 
 
 
-def resolve_target_url(id_store_path, product_id: str) -> str:
-    """Resolve one collected product ID to its original comparison URL."""
-    if not id_store_path.exists():
-        raise FileNotFoundError(
-            f"상품 ID 저장소가 없습니다: {id_store_path}. 먼저 메뉴 1을 실행하세요."
-        )
-    id_records = load(id_store_path)
-    id_record = id_records.get(str(product_id))
-    if not isinstance(id_record, dict) or not id_record.get("source_url"):
-        raise RuntimeError(
-            f"상품 ID {product_id}가 수집된 ID 목록에 없거나 원본 URL이 없습니다. "
-            "메뉴 1에서 상품 ID를 다시 수집하세요."
-        )
-    url = str(id_record["source_url"]).strip()
-    if not url:
-        raise RuntimeError(f"상품 ID {product_id}의 source_url이 비어 있습니다.")
-    return url
+def collect_sheet_urls(sheets, settings, limit: int | None = None) -> list[str]:
+    """Read unique comparison URLs directly from the configured Google Sheet."""
+    df = sheets.read_df(settings.google_price_sheet)
+    if df.empty:
+        return []
+    if settings.google_url_column not in df.columns:
+        raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
+    rows: list[str] = []
+    seen_urls: set[str] = set()
+    for raw_url in df[settings.google_url_column].tolist():
+        if pd.isna(raw_url):
+            continue
+        url = str(raw_url).strip()
+        if not url:
+            continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        rows.append(url)
+    return rows if limit is None else rows[:limit]
 
 
 def now_text() -> str:
@@ -57,51 +59,15 @@ async def run_price_competition(
         settings.google_scopes,
         settings.google_sheet_url,
     )
-    # 단일 상품은 1단계에서 저장한 상품 ID -> source_url 매핑을 사용한다.
-    # Google Sheet 전체 URL을 다시 읽거나 순회하지 않는다.
-    target_url: str | None = None
-    if target_product_id:
-        id_store_path = settings.product_payloads.with_name("buyma_product_ids.json")
-        target_url = resolve_target_url(id_store_path, target_product_id)
-
-        # 단일 상품 테스트는 해당 상품이 속한 URL 하나만 조회한다.
-        rows = [target_url]
-        logger.info("단일 상품 모드: 상품 ID %s / 저장된 URL 1개만 조회", target_product_id)
-    else:
-        df = sheets.read_df(settings.google_price_sheet)
-        if df.empty:
-            logger.info("Google Sheet에 데이터가 없습니다.")
-            return
-        if settings.google_url_column not in df.columns:
-            raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
-        rows = []
-        seen_urls: set[str] = set()
-        for raw_url in df[settings.google_url_column].tolist():
-            if pd.isna(raw_url):
-                continue
-            url = str(raw_url).strip()
-            if not url:
-                continue
-            if url in seen_urls:
-                logger.warning("중복 URL을 건너뜁니다: %s", url)
-                continue
-            seen_urls.add(url)
-            rows.append(url)
-        if limit is not None:
-            rows = rows[:limit]
-
-    # 가격 변경은 BUYMA Personal Shopper API로만 수행한다.
-    # 웹 로그인/편집 화면 자동화는 사용하지 않는다.
-    payloads: dict[str, Any] = {}
-    if settings.product_payloads.exists():
-        try:
-            payloads = load(settings.product_payloads)
-        except Exception as exc:
-            logger.warning("API payload 저장소를 읽지 못했습니다: %s", exc)
+    # 단일/전체 모두 Google Sheet의 URL을 기준으로 공개 상품을 실시간 조회한다.
+    # 상품 ID나 API payload 사전 수집 파일은 가격 변경의 선행 조건이 아니다.
+    rows = collect_sheet_urls(sheets, settings, limit)
+    if not rows:
+        logger.info("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
+        return []
 
     api_client = None
     if apply:
-        # Fail early instead of scraping hundreds of URLs when credentials are missing.
         if not settings.buyma_tokens.exists():
             raise FileNotFoundError(
                 f"BUYMA OAuth token이 없습니다: {settings.buyma_tokens}. "
@@ -109,26 +75,6 @@ async def run_price_competition(
             )
         api_client = BuymaClient(settings.buyma_tokens, settings.buyma_base_url)
         api_client.validate_token_file()
-        if target_product_id:
-            entry = payloads.get(str(target_product_id))
-            product = entry.get("product") if isinstance(entry, dict) else None
-            if not isinstance(product, dict):
-                status = entry.get("migration_status", "payload record missing") if isinstance(entry, dict) else "record missing"
-                missing = entry.get("mapping_missing_fields", []) if isinstance(entry, dict) else []
-                source_summary = entry.get("source_summary", {}) if isinstance(entry, dict) else {}
-                missing_text = ", ".join(missing) if missing else "공식 API payload 변환 결과 없음"
-                summary_text = (
-                    f"원본 필드: {', '.join(source_summary.get('source_keys', []))}"
-                    if isinstance(source_summary, dict) and source_summary.get("source_keys")
-                    else "원본 필드 요약 없음"
-                )
-                raise RuntimeError(
-                    f"상품 {target_product_id}는 가격 변경용 API payload가 준비되지 않았습니다. "
-                    f"상태={status}; 미확보 필드={missing_text}; {summary_text}. "
-                    f"저장 파일={settings.product_payloads}. "
-                    "메뉴 2는 원본 데이터를 수집했을 수 있지만, 공식 API 필드 변환까지 성공한 것은 아닙니다."
-                )
-            api_client.validate_payload({"product": product}, expected_product_id=str(target_product_id))
 
     collector = PublicProductCollector(settings, logger)
 
@@ -144,7 +90,12 @@ async def run_price_competition(
         )
 
         try:
-            # rows는 전체 모드에서는 시트 URL 목록, 단일 모드에서는 저장된 URL 한 개다.
+            # 실제 변경 모드에서만 BUYMA 로그인 세션을 준비한다.
+            # 공개 경쟁가 수집 및 DRY RUN에는 판매자 로그인이 필요하지 않다.
+            if apply:
+                from payload_migration import login_once
+                if not await login_once(page, settings, logger):
+                    raise RuntimeError("BUYMA 판매자 로그인 검증에 실패하여 가격 변경을 중단했습니다.")
 
             if not rows:
                 logger.warning("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
@@ -236,21 +187,6 @@ async def run_price_competition(
 
                     product_id = str(own.product_id)
 
-                    # A live BUYMA time-sale price is not the base product.price.
-                    # Never send a base-price update while the source record says
-                    # a time-sale campaign is active, even if the public card selector
-                    # failed to recognize its sale badge.
-                    payload_entry = payloads.get(product_id)
-                    mapping_missing = (
-                        payload_entry.get("mapping_missing_fields", [])
-                        if isinstance(payload_entry, dict) else []
-                    )
-                    if any(str(field).startswith("active_timesale") for field in mapping_missing):
-                        result["비고"] = "진행 중인 타임세일 상품: 기본 가격 변경 제외"
-                        results.append(result)
-                        skipped += 1
-                        continue
-
                     decision = decide(current, min_shop, delta, maximum)
                     result["신규가"] = decision.new_price
                     result["가격 차이"] = decision.change
@@ -297,16 +233,49 @@ async def run_price_competition(
                         continue
 
                     try:
-                        payload_entry = payloads.get(product_id)
-                        stored_product = payload_entry.get("product") if isinstance(payload_entry, dict) else None
-                        if not isinstance(stored_product, dict):
+                        # 가격 변경이 필요한 상품에 한해서만 판매자 편집 페이지를 열고
+                        # 최신 원본 데이터를 받아 API payload로 변환한다.
+                        from payload_migration import capture_payload
+                        live_data = await capture_payload(page, product_id, settings, logger)
+                        if live_data.get("auth_lost"):
+                            raise RuntimeError("BUYMA 로그인 세션이 만료되었습니다. 가격 변경을 중단합니다.")
+                        if isinstance(live_data.get("product"), dict):
+                            live_product = live_data["product"]
+                            missing_fields = []
+                        elif isinstance(live_data.get("source_product_data"), dict):
+                            from buyma_price_competitor.payload_mapper import convert_source_product
+                            live_product, missing_fields = convert_source_product(
+                                live_data["source_product_data"], product_id
+                            )
+                        else:
                             raise RuntimeError(
-                                f"공식 API payload가 없습니다 ({settings.product_payloads}). "
-                                "source_product_data는 API 수정용 payload가 아닙니다."
+                                "판매자 페이지에서 최신 상품 원본 데이터를 가져오지 못했습니다. "
+                                f"URL={live_data.get('url', page.url)}"
                             )
 
+                        if missing_fields:
+                            raise RuntimeError(
+                                "최신 원본 데이터의 API 변환 필드가 부족합니다: "
+                                + ", ".join(missing_fields)
+                            )
+                        if str(live_product.get("id")) != product_id:
+                            raise RuntimeError(
+                                f"최신 payload 상품 ID 불일치: {live_product.get('id')} != {product_id}"
+                            )
+                        # 판매자 원본 가격과 공개 목록 가격이 다르면 stale/타임세일 등일 수 있다.
+                        # 가격만 변경하는 API에 오래되거나 다른 상태의 payload를 보내지 않는다.
+                        if int(live_product.get("price") or 0) != current:
+                            raise RuntimeError(
+                                "공개 상품 가격과 판매자 원본 기본 가격이 일치하지 않습니다. "
+                                f"공개가={current:,}, 원본가={live_product.get('price')}. "
+                                "타임세일 또는 가격 갱신 지연 가능성으로 요청을 중단합니다."
+                            )
+
+                        api_client.validate_payload(
+                            {"product": live_product}, expected_product_id=product_id
+                        )
                         api_response = api_client.update_price(
-                            {"product": stored_product},
+                            {"product": live_product},
                             decision.new_price,
                             expected_product_id=product_id,
                         )
@@ -320,12 +289,8 @@ async def run_price_competition(
                         )
                         result["request_uid"] = request_uid
                         result["request_received_at"] = request_received_at
-                        # Save the request metadata, but do not mutate the stored product price:
-                        # API acceptance is asynchronous and does not prove the listing updated.
-                        payload_entry["last_request_uid"] = request_uid
-                        payload_entry["last_request_received_at"] = request_received_at
-                        payload_entry["last_requested_price"] = decision.new_price
-                        payload_entry["last_requested_at"] = now_text()
+                        # API 접수는 실제 상품 반영 완료와 구분한다.
+                        result["원본 데이터 조회"] = "실시간 조회 및 필수 필드 검증 완료"
                         changed += 1
                         logger.info(
                             "  BUYMA API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
@@ -340,9 +305,6 @@ async def run_price_competition(
 
         finally:
             await browser.close()
-
-    if apply and payloads:
-        save(settings.product_payloads, payloads)
 
     await write_results(settings, sheets, results, changed, already_lowest, no_own)
 
