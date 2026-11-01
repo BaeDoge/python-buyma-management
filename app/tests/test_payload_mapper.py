@@ -60,14 +60,25 @@ def test_maps_unavailable_variant_without_inventing_stock():
     assert "order_quantity" not in product
 
 
-def test_active_timesale_is_not_marked_ready_for_base_price_update():
+def test_active_timesale_metadata_does_not_count_as_missing_api_fields():
     source = sample_source()
     source["timesale"] = {"status": "on", "price": 11900}
 
     product, missing = convert_source_product(source, "123")
 
     assert product["price"] == 12000
-    assert any("active_timesale" in field for field in missing)
+    assert missing == []
+
+
+def test_non_timesale_product_is_ready_for_price_update():
+    source = sample_source()
+    source["timesale"] = None
+
+    product, missing = convert_source_product(source, "123")
+
+    assert product["id"] == 123
+    assert product["price"] == 12000
+    assert missing == []
 
 
 def test_does_not_invent_unknown_fields():
