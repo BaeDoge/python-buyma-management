@@ -14,6 +14,26 @@ from .pricing import decide
 from .public_products import PublicProductCollector
 
 
+
+def resolve_target_url(id_store_path, product_id: str) -> str:
+    """Resolve one collected product ID to its original comparison URL."""
+    if not id_store_path.exists():
+        raise FileNotFoundError(
+            f"상품 ID 저장소가 없습니다: {id_store_path}. 먼저 메뉴 1을 실행하세요."
+        )
+    id_records = load(id_store_path)
+    id_record = id_records.get(str(product_id))
+    if not isinstance(id_record, dict) or not id_record.get("source_url"):
+        raise RuntimeError(
+            f"상품 ID {product_id}가 수집된 ID 목록에 없거나 원본 URL이 없습니다. "
+            "메뉴 1에서 상품 ID를 다시 수집하세요."
+        )
+    url = str(id_record["source_url"]).strip()
+    if not url:
+        raise RuntimeError(f"상품 ID {product_id}의 source_url이 비어 있습니다.")
+    return url
+
+
 def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -42,20 +62,7 @@ async def run_price_competition(
     target_url: str | None = None
     if target_product_id:
         id_store_path = settings.product_payloads.with_name("buyma_product_ids.json")
-        if not id_store_path.exists():
-            raise FileNotFoundError(
-                f"상품 ID 저장소가 없습니다: {id_store_path}. 먼저 메뉴 1을 실행하세요."
-            )
-        id_records = load(id_store_path)
-        id_record = id_records.get(str(target_product_id))
-        if not isinstance(id_record, dict) or not id_record.get("source_url"):
-            raise RuntimeError(
-                f"상품 ID {target_product_id}가 수집된 ID 목록에 없거나 원본 URL이 없습니다. "
-                "메뉴 1에서 상품 ID를 다시 수집하세요."
-            )
-        target_url = str(id_record["source_url"]).strip()
-        if not target_url:
-            raise RuntimeError(f"상품 ID {target_product_id}의 source_url이 비어 있습니다.")
+        target_url = resolve_target_url(id_store_path, target_product_id)
 
         # 단일 상품 테스트는 해당 상품이 속한 URL 하나만 조회한다.
         rows = [target_url]
