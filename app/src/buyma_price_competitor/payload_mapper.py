@@ -204,10 +204,4 @@ def convert_source_product(source: dict[str, Any], product_id: str) -> tuple[dic
         missing.append("id(product ID mismatch)")
     missing.extend(variant_errors)
 
-    # Do not turn a time-sale price into an ordinary price update. The public
-    # listing price can be different from product.price while a campaign is live.
-    sale = source.get("timesale")
-    if isinstance(sale, dict) and sale.get("status") == "on":
-        missing.append("active_timesale(타임세일 종료 후 가격 변경 필요)")
-
     return product, sorted(set(missing))
