@@ -36,11 +36,11 @@ uv run buyma_price_manager.py
 
 ## 가격 계산
 
-기본값은 경쟁 최저가보다 10원 낮은 가격이며, 현재가에서 100원을 초과해 인하해야 하는 상품은 건너뜁니다. 실행 메뉴에서 값을 입력할 수 있습니다.
+기본값은 경쟁 최저가보다 10엔(JPY) 낮은 가격이며, 현재가에서 100엔(JPY)을 초과해 인하해야 하는 상품은 건너뜁니다. 실행 메뉴에서 값을 입력할 수 있습니다.
 
 경쟁 매장 가격 비교는 BUYMA 공개 상품 페이지를 사용합니다. 공개 Personal Shopper API에서 경쟁 매장 가격 검색 endpoint를 확인하지 못했기 때문입니다. 가격 변경은 BUYMA 공식 Product API로만 요청합니다.
 
-## 중요한 API payload 제한
+## API 가격 변경 코드 테스트\n\nBUYMA에 요청을 보내지 않는 단위 테스트는 다음 명령으로 실행합니다. 가짜 HTTP 응답을 사용하므로 실제 상품 가격은 변경되지 않습니다.\n\n```powershell\nuv run pytest app/tests -q\n```\n\n`build_price_update_payload()` 테스트는 저장된 전체 상품 정보 중 `price`만 바뀌는지, 상품 ID가 일치하는지, 필수 필드가 누락되면 요청 전에 중단하는지 확인합니다. 실제 BUYMA 반영 테스트는 유효한 `data/buyma_products.json`이 준비된 뒤 별도 단일 상품으로 진행해야 합니다.\n\n## 중요한 API payload 제한
 
 BUYMA Product API는 가격만 받는 단순 수정 endpoint가 아닙니다. `data/buyma_products.json`에 API 필수 필드를 갖춘 전체 `product` 객체가 있어야 합니다. `source_product_data`만 있거나 필수 필드가 빠진 상품은 가격 변경에서 제외합니다. 빠진 값을 임의로 추측해 보내지 않습니다.
 

@@ -13,6 +13,12 @@ class BuymaAPIError(RuntimeError):
 
 
 class BuymaClient:
+    REQUIRED_FIELDS = {
+        "control", "name", "comments", "brand_id", "category_id",
+        "price", "available_until", "buying_area_id", "shipping_area_id",
+        "images", "shipping_methods", "options", "variants",
+    }
+
     def __init__(self, token_path: Path, base_url: str):
         self.token_path = token_path
         self.base_url = base_url.rstrip("/")
@@ -39,12 +45,6 @@ class BuymaClient:
         if not token:
             raise RuntimeError("tokens.json에 access_token이 없습니다. OAuth를 다시 진행하세요.")
         return str(token)
-
-    REQUIRED_FIELDS = {
-        "control", "name", "comments", "brand_id", "category_id",
-        "price", "available_until", "buying_area_id", "shipping_area_id",
-        "images", "shipping_methods", "options", "variants",
-    }
 
     def validate_payload(
         self,
@@ -80,6 +80,21 @@ class BuymaClient:
                 "기존 상품 상태를 확인한 전체 payload를 사용하세요."
             )
 
+    def build_price_update_payload(
+        self,
+        stored_payload: dict[str, Any],
+        new_price: int,
+        *,
+        expected_product_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build the exact API body without sending a request (safe to test)."""
+        if isinstance(new_price, bool) or int(new_price) <= 0:
+            raise ValueError("변경 가격은 1 이상의 JPY 정수여야 합니다.")
+        body = deepcopy(stored_payload)
+        self.validate_payload(body, expected_product_id=expected_product_id)
+        body["product"]["price"] = int(new_price)
+        return body
+
     def update_price(
         self,
         stored_payload: dict[str, Any],
@@ -87,11 +102,11 @@ class BuymaClient:
         *,
         expected_product_id: str | None = None,
     ) -> dict[str, Any]:
-        body = deepcopy(stored_payload)
-        self.validate_payload(body, expected_product_id=expected_product_id)
-        product = body["product"]
-        product["price"] = int(new_price)
-
+        body = self.build_price_update_payload(
+            stored_payload,
+            new_price,
+            expected_product_id=expected_product_id,
+        )
         response = self.session.post(
             f"{self.base_url}/api/v1/products.json",
             headers={
