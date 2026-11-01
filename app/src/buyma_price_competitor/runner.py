@@ -27,6 +27,7 @@ async def run_price_competition(
     max_change: int | None = None,
     limit: int | None = None,
     target_product_id: str | None = None,
+    expected_new_price: int | None = None,
 ) -> None:
     delta = settings.price_delta if price_delta is None else price_delta
     maximum = settings.max_change if max_change is None else max_change
@@ -221,6 +222,14 @@ async def run_price_competition(
                         results.append(result)
                         continue
 
+                    # 단일 상품 테스트는 미리보기 이후 가격이 달라졌다면 실제 요청을 중단한다.
+                    if apply and expected_new_price is not None and int(decision.new_price) != int(expected_new_price):
+                        result[\"비고\"] = (\n                            f\"미리보기 가격과 달라 요청 중단: 미리보기={expected_new_price:,}, \"\n                            f\"현재 계산={decision.new_price:,}\"\n                        )
+                        skipped += 1
+                        results.append(result)
+                        logger.warning(\"상품 %s 가격이 미리보기 이후 변경되어 API 요청을 중단했습니다.\", product_id)
+                        continue
+
                     # DRY RUN에서는 API 요청을 보내지 않는다.
                     if not apply:
                         result["비고"] = f"DRY RUN / {decision.reason}"
@@ -284,6 +293,7 @@ async def run_price_competition(
         no_own,
         skipped,
     )
+    return results
 
 
 async def write_results(settings, sheets, results, changed, already_lowest, no_own):
