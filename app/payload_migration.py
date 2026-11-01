@@ -15,6 +15,7 @@ from buyma_price_competitor.browser import launch_chrome
 from buyma_price_competitor.config import Settings
 from buyma_price_competitor.logging_utils import setup_logging
 from buyma_price_competitor.payload_store import load, save
+from buyma_price_competitor.payload_mapper import convert_source_product
 
 BASE_URL = "https://www.buyma.com"
 # Required fields for a genuine payload accepted by the existing API-update workflow.
@@ -362,20 +363,28 @@ async def main() -> None:
                     logger.info("  공식 payload 형태 저장: %s / 필드 %d개", pid, len(product))
                 elif result and isinstance(result.get("source_product_data"), dict):
                     source_data = result["source_product_data"]
-                    payloads[pid] = {
+                    candidate, missing_fields = convert_source_product(source_data, pid)
+                    entry = {
                         "source_product_data": source_data,
                         "source_summary": result.get("source_summary", summarize_source_product(source_data)),
-                        "migration_status": "source_data_only_official_payload_mapping_incomplete",
+                        "migration_status": "ready_for_api_price_update" if not missing_fields else "mapping_incomplete",
                         "migrated_at": datetime.now().isoformat(timespec="seconds"),
                         "source_url": edit_url(pid),
                         "responses": result.get("responses", []),
                     }
+                    if not missing_fields:
+                        entry["product"] = candidate
+                        ids[pid]["has_full_payload"] = True
+                        logger.info("  API payload 변환 성공: %s / 필드 %d개", pid, len(candidate))
+                    else:
+                        entry["mapping_missing_fields"] = missing_fields
+                        ids[pid]["has_full_payload"] = False
+                        logger.warning("  API payload 변환 보류: %s / 미확보 필드: %s", pid, ", ".join(missing_fields))
+                    payloads[pid] = entry
                     ids[pid]["has_source_data"] = True
-                    # Intentionally do NOT set has_full_payload: required API fields such as
-                    # control/options/variants and area IDs have not been safely mapped.
                     raw_path = settings.migration_debug_dir / f"source_product_{pid}.json"
                     raw_path.write_text(json.dumps(source_data, ensure_ascii=False, indent=2), encoding="utf-8")
-                    logger.info("  원본 상품 데이터 저장: %s / 필드 %d개 (공식 API payload 아님)", pid, len(source_data))
+                    logger.info("  원본 상품 데이터 및 변환 결과 저장: %s / 필드 %d개", pid, len(source_data))
                 else:
                     debug_path = settings.migration_debug_dir / f"payload_{pid}.json"
                     debug_path.write_text(json.dumps(result or {}, ensure_ascii=False, indent=2), encoding="utf-8")
