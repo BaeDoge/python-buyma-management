@@ -14,6 +14,28 @@ from .public_products import PublicProductCollector
 
 
 
+def collect_sheet_urls(sheets, settings, limit: int | None = None) -> list[str]:
+    """Read unique comparison URLs directly from the configured Google Sheet."""
+    df = sheets.read_df(settings.google_price_sheet)
+    if df.empty:
+        return []
+    if settings.google_url_column not in df.columns:
+        raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
+    rows: list[str] = []
+    seen_urls: set[str] = set()
+    for raw_url in df[settings.google_url_column].tolist():
+        if pd.isna(raw_url):
+            continue
+        url = str(raw_url).strip()
+        if not url:
+            continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        rows.append(url)
+    return rows if limit is None else rows[:limit]
+
+
 def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -39,27 +61,10 @@ async def run_price_competition(
     )
     # 단일/전체 모두 Google Sheet의 URL을 기준으로 공개 상품을 실시간 조회한다.
     # 상품 ID나 API payload 사전 수집 파일은 가격 변경의 선행 조건이 아니다.
-    df = sheets.read_df(settings.google_price_sheet)
-    if df.empty:
-        logger.info("Google Sheet에 데이터가 없습니다.")
+    rows = collect_sheet_urls(sheets, settings, limit)
+    if not rows:
+        logger.info("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
         return []
-    if settings.google_url_column not in df.columns:
-        raise ValueError(f"Google Sheet에 {settings.google_url_column} 컬럼이 없습니다.")
-    rows = []
-    seen_urls: set[str] = set()
-    for raw_url in df[settings.google_url_column].tolist():
-        if pd.isna(raw_url):
-            continue
-        url = str(raw_url).strip()
-        if not url:
-            continue
-        if url in seen_urls:
-            logger.warning("중복 URL을 건너뜁니다: %s", url)
-            continue
-        seen_urls.add(url)
-        rows.append(url)
-    if limit is not None:
-        rows = rows[:limit]
 
     api_client = None
     if apply:
