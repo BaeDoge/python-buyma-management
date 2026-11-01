@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import csv
 import subprocess
 import sys
 from pathlib import Path
@@ -45,11 +44,12 @@ def run_script(script: str, label: str) -> None:
 
 
 def execute(settings: Settings, logger, *, apply: bool, delta: int, max_change: int,
-            product_id: str | None = None) -> list[dict[str, Any]]:
+            product_id: str | None = None, expected_new_price: int | None = None) -> list[dict[str, Any]]:
     return asyncio.run(
         run_price_competition(
             settings, logger, apply=apply, price_delta=delta,
             max_change=max_change, target_product_id=product_id,
+            expected_new_price=expected_new_price,
         )
     ) or []
 
@@ -103,6 +103,7 @@ def run_single_product_test(settings: Settings, logger) -> None:
     applied = execute(
         settings, logger, apply=True, delta=delta,
         max_change=max_change, product_id=product_id,
+        expected_new_price=int(target),
     )
     applied_row = find_product_result(applied, product_id)
     if applied_row:
