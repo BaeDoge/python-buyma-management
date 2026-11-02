@@ -79,6 +79,7 @@ async def run_price_competition(
     collector = PublicProductCollector(settings, logger)
 
     results: list[dict[str, Any]] = []
+    pending_updates: list[dict[str, Any]] = []
     changed = skipped = already_lowest = no_own = 0
 
     async with async_playwright() as playwright:
@@ -207,36 +208,113 @@ async def run_price_competition(
                 min_shop = min(competitor_prices)
 
                 for own in own_products:
-                    current = int(own.price)
+                    display_price = int(own.price)
+                    product_id = str(own.product_id or "")
                     result = {
                         "URL": url,
                         "상품명": own.name,
                         "상품ID": own.product_id,
                         "판매자": own.seller_name,
                         "판매자ID": own.seller_id,
-                        "현재가": current,
+                        "현재가": display_price,
+                        "화면가": display_price,
+                        "商品価格": None,
                         "최저가": min_shop,
                         "신규가": None,
                         "가격 차이": None,
+                        "타임세일/할인": "N",
                         "적용 여부": False,
+                        "처리상태": "SKIPPED",
                         "비고": "",
+                        "request_uid": None,
+                        "request_received_at": None,
+                        "원본 데이터 조회": "",
                     }
 
-                    if own.is_timesale:
-                        result["비고"] = "타임세일 진행 중: BUYMA 타임세일 종료 전까지 가격 변경 제외"
-                        results.append(result)
-                        skipped += 1
-                        logger.info(
-                            "  %s | 타임세일 진행 중으로 가격 변경 제외",
-                            own.product_id or "상품 ID 없음",
-                        )
-                        continue
-
-                    product_id = str(own.product_id or "")
                     if not product_id:
                         result["비고"] = "공개 카드에서 상품 ID 확인 실패"
                         results.append(result)
                         skipped += 1
+                        continue
+
+                    live_product = None
+                    special_price = bool(own.is_timesale)
+                    current = display_price
+
+                    # 실제 적용 모드에서는 판매자 원본의 price(商品価格)를 읽는다.
+                    # 공개 페이지의 할인 표시 가격은 가격 변경 기준으로 사용하지 않는다.
+                    if apply:
+                        try:
+                            from payload_migration import capture_payload
+                            live_data = await capture_payload(page, product_id, settings, logger)
+                            if live_data.get("auth_lost"):
+                                raise RuntimeError("BUYMA 로그인 세션이 만료되었습니다. 가격 변경을 중단합니다.")
+                            if isinstance(live_data.get("product"), dict):
+                                live_product = live_data["product"]
+                                missing_fields = []
+                            elif isinstance(live_data.get("source_product_data"), dict):
+                                from buyma_price_competitor.payload_mapper import convert_source_product
+                                live_product, missing_fields = convert_source_product(
+                                    live_data["source_product_data"], product_id
+                                )
+                            else:
+                                raise RuntimeError(
+                                    "판매자 페이지에서 최신 상품 원본 데이터를 가져오지 못했습니다. "
+                                    f"URL={live_data.get('url', page.url)}"
+                                )
+
+                            if missing_fields:
+                                raise RuntimeError(
+                                    "최신 원본 데이터의 API 변환 필드가 부족합니다: "
+                                    + ", ".join(missing_fields)
+                                )
+                            if str(live_product.get("id")) != product_id:
+                                raise RuntimeError(
+                                    f"최신 payload 상품 ID 불일치: {live_product.get('id')} != {product_id}"
+                                )
+                            source_price = int(live_product.get("price") or 0)
+                            if source_price <= 0:
+                                raise RuntimeError(
+                                    f"판매자 원본 商品価格가 올바르지 않습니다: {live_product.get('price')!r}"
+                                )
+
+                            result["商品価格"] = source_price
+                            special_price = special_price or source_price != display_price
+                            current = source_price
+                            result["원본 데이터 조회"] = "실시간 商品価格 및 API 필수 필드 검증 완료"
+                        except Exception as exc:
+                            result["비고"] = f"BUYMA 원본 상품 조회/검증 실패: {exc}"
+                            result["처리상태"] = "SOURCE_VALIDATION_FAILED"
+                            results.append(result)
+                            skipped += 1
+                            logger.exception("  원본 상품 검증 실패: %s", product_id)
+                            continue
+                    elif special_price:
+                        # 미리보기에서는 할인 원본가를 조회하지 않으므로 안전하게 제외한다.
+                        result["비고"] = (
+                            "타임세일 표시 상품: 실제 商品価格 확인은 전체 변경 실행 시 수행"
+                        )
+                        result["처리상태"] = "SKIPPED_TIMESALE_PREVIEW"
+                        results.append(result)
+                        skipped += 1
+                        continue
+
+                    result["현재가"] = current
+                    result["타임세일/할인"] = "Y" if special_price else "N"
+
+                    if special_price and not settings.allow_timesale_price_update:
+                        result["비고"] = (
+                            "BUYMA 할인/타임세일로 화면가와 商品価格가 다르거나 타임세일 표시가 있어 제외 "
+                            "(.env BUYMA_ALLOW_TIMESALE_PRICE_UPDATE=false)"
+                        )
+                        result["처리상태"] = "SKIPPED_TIMESALE"
+                        results.append(result)
+                        skipped += 1
+                        logger.info(
+                            "  %s | BUYMA 할인/타임세일 상품 제외: 화면가 %s / 商品価格 %s",
+                            product_id, f"{display_price:,}",
+                            f"{current:,}" if apply else "-",
+                        )
                         continue
 
                     decision = decide(current, min_shop, delta, maximum)
@@ -245,9 +323,10 @@ async def run_price_competition(
                     result["비고"] = decision.reason
 
                     logger.info(
-                        "  %s | 현재 %s / 경쟁최저 %s / 신규 %s / %s",
+                        "  %s | 商品価格 %s / 화면가 %s / 경쟁최저 %s / 신규 %s / %s",
                         product_id,
                         f"{current:,}",
+                        f"{display_price:,}",
                         f"{min_shop:,}",
                         f"{decision.new_price:,}" if decision.new_price else "-",
                         decision.reason,
@@ -255,11 +334,13 @@ async def run_price_competition(
 
                     if decision.reason == "이미 최저가":
                         result["적용 여부"] = None
+                        result["처리상태"] = "ALREADY_LOWEST"
                         already_lowest += 1
                         results.append(result)
                         continue
 
                     if decision.new_price is None:
+                        result["처리상태"] = "SKIPPED_PRICE_RULE"
                         skipped += 1
                         results.append(result)
                         continue
@@ -269,6 +350,7 @@ async def run_price_competition(
                             f"미리보기 가격과 달라 요청 중단: 미리보기={expected_new_price:,}, "
                             f"현재 계산={decision.new_price:,}"
                         )
+                        result["처리상태"] = "SKIPPED_PREVIEW_MISMATCH"
                         skipped += 1
                         results.append(result)
                         logger.warning(
@@ -279,47 +361,34 @@ async def run_price_competition(
 
                     if not apply:
                         result["비고"] = f"DRY RUN / {decision.reason}"
+                        result["처리상태"] = "PREVIEW_ONLY"
                         results.append(result)
                         continue
 
-                    try:
-                        from payload_migration import capture_payload
-                        live_data = await capture_payload(page, product_id, settings, logger)
-                        if live_data.get("auth_lost"):
-                            raise RuntimeError("BUYMA 로그인 세션이 만료되었습니다. 가격 변경을 중단합니다.")
-                        if isinstance(live_data.get("product"), dict):
-                            live_product = live_data["product"]
-                            missing_fields = []
-                        elif isinstance(live_data.get("source_product_data"), dict):
-                            from buyma_price_competitor.payload_mapper import convert_source_product
-                            live_product, missing_fields = convert_source_product(
-                                live_data["source_product_data"], product_id
-                            )
-                        else:
-                            raise RuntimeError(
-                                "판매자 페이지에서 최신 상품 원본 데이터를 가져오지 못했습니다. "
-                                f"URL={live_data.get('url', page.url)}"
-                            )
+                    api_client.validate_payload(
+                        {"product": live_product}, expected_product_id=product_id
+                    )
 
-                        if missing_fields:
-                            raise RuntimeError(
-                                "최신 원본 데이터의 API 변환 필드가 부족합니다: "
-                                + ", ".join(missing_fields)
-                            )
-                        if str(live_product.get("id")) != product_id:
-                            raise RuntimeError(
-                                f"최신 payload 상품 ID 불일치: {live_product.get('id')} != {product_id}"
-                            )
-                        if int(live_product.get("price") or 0) != current:
-                            raise RuntimeError(
-                                "공개 상품 가격과 판매자 원본 기본 가격이 일치하지 않습니다. "
-                                f"공개가={current:,}, 원본가={live_product.get('price')}. "
-                                "타임세일 또는 가격 갱신 지연 가능성으로 요청을 중단합니다."
-                            )
-
-                        api_client.validate_payload(
-                            {"product": live_product}, expected_product_id=product_id
+                    if special_price:
+                        result["처리상태"] = "WAITING_TIMESALE_CONFIRMATION"
+                        result["비고"] = (
+                            "BUYMA 할인/타임세일 예외 변경 후보: 전체 상품 조회 완료 후 확인 대기"
                         )
+                        pending_updates.append({
+                            "result": result,
+                            "product": live_product,
+                            "new_price": int(decision.new_price),
+                            "product_id": product_id,
+                            "current_price": current,
+                        })
+                        results.append(result)
+                        logger.info(
+                            "  %s | 예외 변경 후보로 보류: %s -> %s",
+                            product_id, f"{current:,}", f"{decision.new_price:,}",
+                        )
+                        continue
+
+                    try:
                         api_response = api_client.update_price(
                             {"product": live_product},
                             decision.new_price,
@@ -328,6 +397,7 @@ async def run_price_competition(
                         request_uid = api_response.get("request_uid")
                         request_received_at = api_response.get("request_received_at")
                         result["적용 여부"] = True
+                        result["처리상태"] = "API_ACCEPTED"
                         result["비고"] = (
                             f"BUYMA API 요청 접수: {current:,} -> {decision.new_price:,}; "
                             f"request_uid={request_uid or '응답에 없음'} "
@@ -335,7 +405,6 @@ async def run_price_competition(
                         )
                         result["request_uid"] = request_uid
                         result["request_received_at"] = request_received_at
-                        result["원본 데이터 조회"] = "실시간 조회 및 필수 필드 검증 완료"
                         changed += 1
                         logger.info(
                             "  BUYMA API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
@@ -343,6 +412,7 @@ async def run_price_competition(
                         )
                     except Exception as exc:
                         result["비고"] = f"BUYMA API 가격 변경 오류: {exc}"
+                        result["처리상태"] = "API_FAILED"
                         skipped += 1
                         logger.exception("  API 가격 변경 실패: %s", product_id)
 
@@ -371,7 +441,68 @@ async def run_price_competition(
         finally:
             await browser.close()
 
-    await write_results(settings, sheets, results, changed, already_lowest, no_own)
+    if pending_updates:
+        print("\\n[타임세일/할인 예외 변경 후보]")
+        print(
+            f"전체 {len(rows)}개 URL 조회 완료. "
+            f"예외 변경 후보 {len(pending_updates)}개를 확인해 주세요."
+        )
+        for index, item in enumerate(pending_updates, start=1):
+            row = item["result"]
+            print(
+                f"{index}. 상품 {item['product_id']} | "
+                f"화면가 {row.get('화면가'):,}엔 | "
+                f"商品価格 {item['current_price']:,}엔 | "
+                f"경쟁최저 {row.get('최저가'):,}엔 | "
+                f"변경 예정 {item['new_price']:,}엔"
+            )
+        print(
+            "\\n주의: 예외 변경을 승인하면 BUYMA 할인/타임세일 가격이 종료되거나 "
+            "변경될 수 있습니다."
+        )
+        confirmation = input(
+            f"위 {len(pending_updates)}개 예외 상품의 가격 변경을 진행할까요? (Y/N): "
+        ).strip().lower()
+        if confirmation in {"y", "yes"}:
+            for item in pending_updates:
+                row = item["result"]
+                try:
+                    response = api_client.update_price(
+                        {"product": item["product"]},
+                        item["new_price"],
+                        expected_product_id=item["product_id"],
+                    )
+                    request_uid = response.get("request_uid")
+                    row["적용 여부"] = True
+                    row["처리상태"] = "API_ACCEPTED"
+                    row["request_uid"] = request_uid
+                    row["request_received_at"] = response.get("request_received_at")
+                    row["비고"] = (
+                        f"사용자 승인 후 BUYMA API 요청 접수: "
+                        f"{item['current_price']:,} -> {item['new_price']:,}; "
+                        f"request_uid={request_uid or '응답에 없음'} "
+                        "(비동기 반영 완료 여부는 BUYMA에서 확인 필요)"
+                    )
+                    changed += 1
+                    logger.info(
+                        "타임세일/할인 예외 API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
+                        item["product_id"], item["new_price"], request_uid,
+                    )
+                except Exception as exc:
+                    row["처리상태"] = "API_FAILED"
+                    row["비고"] = f"사용자 승인 후 BUYMA API 가격 변경 오류: {exc}"
+                    skipped += 1
+                    logger.exception("예외 상품 API 가격 변경 실패: %s", item["product_id"])
+        else:
+            for item in pending_updates:
+                item["result"]["처리상태"] = "CANCELLED_BY_USER"
+                item["result"]["비고"] = "전체 조회 후 예외 변경 확인 단계에서 사용자가 취소했습니다."
+                skipped += 1
+            logger.info("타임세일/할인 예외 변경 %s건을 사용자가 취소했습니다.", len(pending_updates))
+
+    report_path = await write_results(settings, sheets, results, changed, already_lowest, no_own)
+    logger.info("CSV 결과 저장: %s", report_path)
+    logger.info("Google Sheets 결과 탭 갱신: %s", settings.google_api_result_sheet)
 
     logger.info(
         "=== 완료 | API 요청 접수 %s / 이미 최저 %s / BestShip 없음 %s / 스킵 %s ===",
@@ -391,6 +522,8 @@ async def write_results(settings, sheets, results, changed, already_lowest, no_o
 
     if results:
         history = pd.DataFrame(results)
+        # 실행별 최종 결과는 전용 탭에 덮어쓰고, 기존 이력 탭에는 누적한다.
+        sheets.replace_df(settings.google_api_result_sheet, history)
         sheets.append_df(settings.google_history_sheet, history)
 
     return report_path
