@@ -10,6 +10,7 @@ app:
   price:
     delta: 10
     max_change: 50
+    # 할인/타임세일 허용 여부는 .env의 BUYMA_ALLOW_TIMESALE_PRICE_UPDATE로 설정
 
   browser:
     headless: false
