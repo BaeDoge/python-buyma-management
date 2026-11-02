@@ -18,6 +18,14 @@ ROOT = (
 load_dotenv(ROOT / ".env")
 
 
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _get(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
     value: Any = data
     for key in keys:
@@ -44,7 +52,9 @@ class Settings:
     google_sheet_url: str
     google_price_sheet: str
     google_history_sheet: str
+    google_api_result_sheet: str
     google_url_column: str
+    allow_timesale_price_update: bool
     google_scopes: list[str]
     google_service_account: Path
     buyma_tokens: Path
@@ -79,6 +89,11 @@ class Settings:
         google = _get(data, "google", default={}) or {}
         paths = _get(data, "paths", default={}) or {}
         buyma = _get(data, "app", "buyma", default={}) or {}
+        timesale_env = os.getenv("BUYMA_ALLOW_TIMESALE_PRICE_UPDATE")
+        allow_timesale = _as_bool(
+            timesale_env if timesale_env is not None else price_cfg.get("allow_timesale_update"),
+            default=False,
+        )
 
         price_selector = selectors.get("product_price", {})
         if isinstance(price_selector, dict):
@@ -108,7 +123,9 @@ class Settings:
             google_sheet_url=str(google.get("sheet_url", "")),
             google_price_sheet=str(google.get("price_sheet", "[2]최저가")),
             google_history_sheet=str(google.get("history_sheet", "[5] 최저가 적용이력")),
+            google_api_result_sheet=str(google.get("api_result_sheet", "api 가격변경 시트")),
             google_url_column=str(google.get("url_column", "URL")),
+            allow_timesale_price_update=allow_timesale,
             google_scopes=list(google.get("scopes") or ["https://www.googleapis.com/auth/spreadsheets"]),
             google_service_account=abs_path(str(paths.get("google_service_account", "secrets/service_account.json"))),
             buyma_tokens=abs_path(str(paths.get("buyma_tokens", "secrets/tokens.json"))),
