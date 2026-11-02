@@ -354,6 +354,8 @@ async def run_price_competition(
                                 f"최신 payload 상품 ID 불일치: {live_product.get('id')} != {product_id}"
                             )
                         source_price = int(live_product.get("price") or 0)
+                        if source_price <= 0:
+                            raise RuntimeError("판매자 원본의 商品価格가 비어 있거나 0 이하입니다.")
                         if source_price != current:
                             result["화면가"] = current
                             if not settings.allow_timesale_price_update:
@@ -433,7 +435,7 @@ async def run_price_competition(
                     logger.info("단일 상품 %s 처리 완료. 추가 URL은 조회하지 않습니다.", target_product_id)
                     break
 
-            if deferred_candidates and apply and not target_product_id:
+            if deferred_candidates and apply:
                 logger.info("=== 할인/타임세일 상품 최종 확인 단계 ===")
                 ready_candidates: list[dict[str, Any]] = []
 
@@ -465,6 +467,10 @@ async def run_price_competition(
                         if source_price <= 0:
                             raise RuntimeError("실제 商品価格가 비어 있거나 0 이하입니다.")
 
+                        api_client.validate_payload(
+                            {"product": live_product},
+                            expected_product_id=product_id,
+                        )
                         decision = decide(source_price, int(candidate["min_shop"]), delta, maximum)
                         row["화면가"] = row.get("화면가", row.get("현재가"))
                         row["현재가"] = source_price
