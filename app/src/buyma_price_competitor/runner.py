@@ -482,6 +482,16 @@ async def run_price_competition(
                         if decision.new_price is None:
                             row["비고"] = f"실제 商品価格 기준 변경 제외: {decision.reason}"
                             skipped += 1
+                        elif (
+                            target_product_id
+                            and expected_new_price is not None
+                            and int(decision.new_price) != int(expected_new_price)
+                        ):
+                            row["비고"] = (
+                                "미리보기 가격과 실제 商品価格 기준 계산 결과가 달라 변경 중단: "
+                                f"미리보기={expected_new_price:,}, 실제 계산={decision.new_price:,}"
+                            )
+                            skipped += 1
                         else:
                             row["비고"] = "할인/타임세일 상품: 실제 商品価格 기준 변경 확인 대기"
                             ready_candidates.append(candidate)
