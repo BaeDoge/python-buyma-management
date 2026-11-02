@@ -10,6 +10,8 @@ app:
   price:
     delta: 10
     max_change: 50
+    # false: BUYMA 할인/타임세일 상품 제외 / true: 전체 조회 후 별도 승인 시 변경
+    allow_timesale_update: false
 
   browser:
     headless: false
@@ -29,6 +31,7 @@ google:
   sheet_url: "YOUR_GOOGLE_SHEET_URL"
   price_sheet: "[2]최저가"
   history_sheet: "[5] 최저가 적용이력"
+  api_result_sheet: "api 가격변경 시트"
   url_column: "URL"
 
 paths:
