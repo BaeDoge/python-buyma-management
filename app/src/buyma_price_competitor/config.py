@@ -44,6 +44,8 @@ class Settings:
     google_sheet_url: str
     google_price_sheet: str
     google_history_sheet: str
+    google_result_sheet: str
+    allow_timesale_price_update: bool
     google_url_column: str
     google_scopes: list[str]
     google_service_account: Path
@@ -78,6 +80,10 @@ class Settings:
         seller = _get(data, "app", "own_seller", default={}) or {}
         google = _get(data, "google", default={}) or {}
         paths = _get(data, "paths", default={}) or {}
+        allow_timesale_raw = os.getenv("BUYMA_ALLOW_TIMESALE_PRICE_UPDATE", "false").strip().lower()
+        if allow_timesale_raw not in {"1", "true", "yes", "y", "on", "0", "false", "no", "n", "off"}:
+            raise ValueError("BUYMA_ALLOW_TIMESALE_PRICE_UPDATE는 true 또는 false로 설정하세요.")
+        allow_timesale = allow_timesale_raw in {"1", "true", "yes", "y", "on"}
         buyma = _get(data, "app", "buyma", default={}) or {}
 
         price_selector = selectors.get("product_price", {})
@@ -108,6 +114,8 @@ class Settings:
             google_sheet_url=str(google.get("sheet_url", "")),
             google_price_sheet=str(google.get("price_sheet", "[2]최저가")),
             google_history_sheet=str(google.get("history_sheet", "[5] 최저가 적용이력")),
+            google_result_sheet=str(google.get("result_sheet", "api 가격변경 시트")),
+            allow_timesale_price_update=allow_timesale,
             google_url_column=str(google.get("url_column", "URL")),
             google_scopes=list(google.get("scopes") or ["https://www.googleapis.com/auth/spreadsheets"]),
             google_service_account=abs_path(str(paths.get("google_service_account", "secrets/service_account.json"))),
