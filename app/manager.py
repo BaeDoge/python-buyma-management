@@ -117,6 +117,13 @@ def run_all_price_changes(settings: Settings, logger) -> None:
     max_change = ask_amount("허용할 최대 인하 폭", settings.max_change)
     print("\n[전체 가격 변경]")
     print("Google Sheet에 등록된 전체 URL 중 조건에 맞는 모든 준비된 상품에 API 요청을 보냅니다.")
+    print(
+        "타임세일/할인 예외 변경: "
+        + ("활성화" if settings.allow_timesale_price_update else "비활성화")
+        + " (.env: BUYMA_ALLOW_TIMESALE_PRICE_UPDATE)"
+    )
+    if settings.allow_timesale_price_update:
+        print("할인/타임세일 상품은 전체 조회 후 별도 목록을 보여주고 추가 승인을 받습니다.")
     confirmation = input(f"전체 변경을 승인하려면 APPLY-ALL-{delta}-{max_change} 를 입력하세요: ").strip()
     if confirmation != f"APPLY-ALL-{delta}-{max_change}":
         print("확인 문구가 일치하지 않아 취소했습니다.")
