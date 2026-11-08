@@ -1,8 +1,7 @@
+import asyncio
 from pathlib import Path
 
 import pandas as pd
-import pytest
-
 from buyma_price_competitor.reporting import CheckpointResults, write_results
 
 
@@ -26,8 +25,7 @@ class FakeSettings:
         self.google_api_history_sheet = "[6] 최저가 적용이력-공식API"
 
 
-@pytest.mark.asyncio
-async def test_report_is_appended_to_official_api_history_without_changing_legacy_history(tmp_path):
+def test_report_is_appended_to_official_api_history_without_changing_legacy_history(tmp_path):
     settings = FakeSettings(tmp_path)
     sheets = FakeSheets()
     results = [
@@ -42,10 +40,10 @@ async def test_report_is_appended_to_official_api_history_without_changing_legac
     ]
     report_path = tmp_path / "reports" / "report.csv"
 
-    await write_results(
+    asyncio.run(write_results(
         settings, sheets, results, 1, 0, 0,
         report_path=report_path,
-    )
+    ))
 
     assert report_path.exists()
     saved = pd.read_csv(report_path, encoding="utf-8-sig")
