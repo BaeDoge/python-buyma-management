@@ -44,6 +44,7 @@ class Settings:
     google_sheet_url: str
     google_price_sheet: str
     google_history_sheet: str
+    google_api_history_sheet: str
     google_result_sheet: str
     allow_timesale_price_update: bool
     google_url_column: str
@@ -114,6 +115,7 @@ class Settings:
             google_sheet_url=str(google.get("sheet_url", "")),
             google_price_sheet=str(google.get("price_sheet", "[2]최저가")),
             google_history_sheet=str(google.get("history_sheet", "[5] 최저가 적용이력")),
+            google_api_history_sheet=str(google.get("api_history_sheet", "[6] 최저가 적용이력-공식API")),
             google_result_sheet=str(google.get("result_sheet", "api 가격변경 시트")),
             allow_timesale_price_update=allow_timesale,
             google_url_column=str(google.get("url_column", "URL")),
