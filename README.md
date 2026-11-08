@@ -20,21 +20,19 @@ uv run buyma_price_manager.py
 
 | 메뉴 | 기능 |
 |---|---|
-| 1 | Google Sheet URL에서 BESTSHIP 상품 ID 수집 |
-| 2 | BUYMA 로그인 후 상품 payload 수집 시도 |
-| 3 | 전체 상품 가격 비교 미리보기. 실제 가격 변경 없음 |
-| 4 | 상품 ID 하나를 입력해 미리보기 후 해당 상품 하나만 실제 변경 테스트 |
-| 5 | 조건에 맞는 전체 상품 가격 변경 |
+| 1 | 전체 상품 가격 비교 미리보기. 실제 가격 변경 없음 |
+| 2 | 상품 ID 하나를 입력해 미리보기 후 해당 상품 하나만 실제 변경 테스트 |
+| 3 | 조건에 맞는 전체 상품 가격 변경 |
 | 0 | 종료 |
 
-**처음 실행할 때:** 1 → 2 → 3 순서로 진행합니다. 이후에는 시트 URL을 매번 새로 읽으므로 평소에는 3번(비교) 또는 4번(단일 테스트), 검증 완료 후 5번(전체 변경)만 사용하면 됩니다.
+Google Sheets의 `[2]최저가` 탭에서 URL을 매번 새로 읽습니다. 처음에는 1번으로 비교 결과를 확인하고, 2번으로 단일 상품 변경을 테스트한 뒤 3번 전체 변경을 사용하세요.
 
 ### 단일 상품 테스트 (메뉴 4)
 
 1. 테스트할 BUYMA 상품 ID를 입력합니다.
 2. 프로그램이 해당 ID만 공개 상품 페이지에서 찾아 현재가/경쟁 최저가/변경 예정가를 계산합니다.
 3. 화면에 표시된 변경 예정가를 확인합니다.
-4. 실제 변경할 때만 `CHANGE-상품ID-변경예정가`를 입력합니다.
+4. 실제 변경 확인 질문에 Y를 입력합니다.
 5. 프로그램은 API 요청 직전에 가격을 다시 계산합니다. 미리보기 가격과 달라졌다면 요청을 중단합니다.
 
 다른 상품은 단일 테스트의 API 변경 대상이 되지 않습니다. 단일 테스트는 해당 상품의 공식 API 전체 payload가 준비되어 있어야 하며, payload가 없거나 필수 필드가 빠져 있으면 요청하지 않습니다.
@@ -42,6 +40,17 @@ uv run buyma_price_manager.py
 ### 전체 변경 (메뉴 5)
 
 전체 변경은 별도 확인 문구 `APPLY-ALL-변경금액-최대인하폭`를 입력해야 진행됩니다. 단일 상품 테스트를 먼저 완료한 뒤 사용하세요.
+
+## Google Sheets 보고서
+
+가격 비교/변경 실행이 끝나면 결과 CSV와 동일한 컬럼 및 행을 Google Sheets에 기록합니다.
+
+- `api 가격변경 시트`: 가장 최근 실행 결과로 덮어씁니다.
+- `[6] 최저가 적용이력-공식API`: 공식 API 실행 보고서를 실행할 때마다 아래로 누적합니다. 탭이 없으면 자동 생성합니다.
+- `[5] 최저가 적용이력`: 기존 데이터와 탭을 보존합니다. 공식 API 보고서는 이 탭에 추가하지 않습니다.
+- 로컬 CSV 보고서는 `reports/`에 실행별 파일로 저장됩니다.
+
+새 이력 탭 이름은 `config.yaml`의 `google.api_history_sheet`에서 변경할 수 있습니다. 기본값은 `[6] 최저가 적용이력-공식API`입니다.
 
 ## 가격 규칙
 
@@ -72,24 +81,25 @@ uv run pytest app/tests -q
 
 ```text
 .
-├── buyma_price_manager.py
-├── config.example.yaml
-├── pyproject.toml
-├── uv.lock
+├── buyma_price_manager.py             # 프로젝트 실행 진입점
+├── config.example.yaml                # 설정 예시
+├── pyproject.toml / uv.lock           # 의존성
 └── app/
-    ├── manager.py
-    ├── migration.py
-    ├── payload_migration.py
-    ├── setup_once.py
+    ├── manager.py                     # 메뉴 및 실행 제어
+    ├── migration.py                   # 상품 ID 수집 도구
+    ├── payload_migration.py           # 판매자 로그인/원본 데이터 수집
     └── src/buyma_price_competitor/
-        ├── runner.py
-        ├── buyma_api.py
-        ├── config.py
-        ├── google_sheets.py
-        ├── payload_mapper.py
-        ├── payload_store.py
-        ├── pricing.py
-        └── public_products.py
+        ├── runner.py                  # 가격 비교 및 변경 흐름
+        ├── reporting.py               # CSV 및 Google Sheets 보고서 저장
+        ├── buyma_api.py               # BUYMA 공식 API 통신
+        ├── google_sheets.py           # Google Sheets 입출력
+        ├── config.py                  # 설정 로딩
+        ├── browser.py                 # Chrome/Playwright 실행
+        ├── public_products.py         # 공개 상품/판매자 정보 수집
+        ├── payload_mapper.py          # 판매자 데이터 → API payload 변환
+        ├── payload_store.py           # 상품 데이터 저장
+        ├── source_to_api.py           # 원본 데이터 변환 보조
+        └── pricing.py                 # 가격 결정 규칙
 ```
 
 실행 결과는 `logs/`와 `reports/`, 상품 데이터는 `data/`에 저장됩니다. 이 폴더들은 실행 시 자동 생성되며 저장소에는 포함하지 않습니다.
