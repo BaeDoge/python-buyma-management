@@ -29,7 +29,8 @@ google:
     - "https://www.googleapis.com/auth/spreadsheets"
   sheet_url: "YOUR_GOOGLE_SHEET_URL"
   price_sheet: "[2]최저가"
-  history_sheet: "[5] 최저가 적용이력"
+  history_sheet: "[5] 최저가 적용이력" # 기존 이력 탭(유지)
+  api_history_sheet: "[6] 최저가 적용이력-공식API"
   result_sheet: "api 가격변경 시트"
   url_column: "URL"
 

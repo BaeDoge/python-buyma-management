@@ -11,6 +11,7 @@ from .buyma_api import BuymaClient
 from .google_sheets import GoogleSheetClient
 from .pricing import decide
 from .public_products import PublicProductCollector
+from .reporting import CheckpointResults, write_results
 
 
 
@@ -34,26 +35,6 @@ def collect_sheet_urls(sheets, settings, limit: int | None = None) -> list[str]:
         seen_urls.add(url)
         rows.append(url)
     return rows if limit is None else rows[:limit]
-
-
-def now_text() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-class CheckpointResults(list):
-    """Persist every completed product result so Ctrl+C does not lose prior work."""
-
-    def __init__(self, path):
-        super().__init__()
-        self.path = path
-
-    def checkpoint(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(self).to_csv(self.path, index=False, encoding="utf-8-sig")
-
-    def append(self, item) -> None:
-        super().append(item)
-        self.checkpoint()
 
 
 async def run_price_competition(
@@ -594,31 +575,3 @@ async def run_price_competition(
     return results
 
 
-async def write_results(
-    settings, sheets, results, changed, already_lowest, no_own,
-    *, report_path, logger=None,
-):
-    settings.reports_dir.mkdir(parents=True, exist_ok=True)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(results).to_csv(report_path, index=False, encoding="utf-8-sig")
-
-    if results:
-        report = pd.DataFrame(results)
-        # Dedicated tab always represents the latest completed API run.
-        try:
-            sheets.replace_df(settings.google_result_sheet, report)
-            if logger:
-                logger.info("최종 결과를 Google Sheet '%s' 탭에 업로드했습니다.", settings.google_result_sheet)
-        except Exception:
-            if logger:
-                logger.exception("Google Sheet 결과 탭 업로드 실패")
-        # Keep the existing append-only history tab unchanged.
-        try:
-            sheets.append_df(settings.google_history_sheet, report)
-        except Exception:
-            if logger:
-                logger.exception("Google Sheet 기존 이력 탭 추가 실패")
-
-    if logger:
-        logger.info("CSV 결과 저장: %s", report_path)
-    return report_path
