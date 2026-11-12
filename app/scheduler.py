@@ -150,6 +150,12 @@ def run_scheduler() -> int:
         headless=env_bool("BUYMA_SCHEDULE_HEADLESS", True),
     )
     state = ScheduleState(settings.root / "data" / "scheduler_runs.json")
+    interrupted = [
+        key for key, record in state.data["runs"].items()
+        if isinstance(record, dict) and record.get("status") == "running"
+    ]
+    for key in interrupted:
+        state.mark(key, "interrupted", note="프로그램이 실행 중 종료되어 자동 재시도하지 않음")
     lock = SingleInstance(settings.root / "data" / "scheduler.lock")
 
     if not lock.acquire():
@@ -161,6 +167,8 @@ def run_scheduler() -> int:
     logger.info("가격 단위: 경쟁 최저가보다 %s엔 낮게 / 최대 인하 폭 %s엔", delta, maximum)
     logger.info("타임세일 변경: %s", "허용" if settings.allow_timesale_price_update else "제외")
     logger.info("예약 실행 중에는 별도의 키보드 입력을 기다리지 않습니다. 종료는 Ctrl+C입니다.")
+    for key in interrupted:
+        logger.warning("이전 예약 작업이 중간에 종료된 기록이 있습니다: %s", key)
 
     try:
         while True:
