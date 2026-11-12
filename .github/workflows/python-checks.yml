@@ -18,6 +18,6 @@ jobs:
       - name: Sync dependencies
         run: uv sync
       - name: Compile Python files
-        run: uv run python -m compileall -q app buyma_price_manager.py
+        run: uv run python -m compileall -q app buyma_price_manager.py buyma_price_scheduler.py
       - name: Run unit tests
         run: uv run pytest app/tests -q
