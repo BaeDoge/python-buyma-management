@@ -82,7 +82,7 @@ Windows에서 아래 파일을 실행합니다.
 build_exe.bat
 ```
 
-`dist/`에 `BUYMA-Manager.exe`와 `BUYMA-Scheduler.exe`가 만들어집니다. 빌드 및 배포 방법은 [사용 매뉴얼](docs/USER_MANUAL.md)과 [EXE 빌드 안내](docs/BUILD_EXE.md)를 참고하세요.
+`dist/`에 `BUYMA-Manager.exe`와 `BUYMA-Scheduler.exe`가 만들어집니다. GitHub Actions의 **Build Windows executables** 작업도 수동 실행하거나 main에 반영된 코드가 바뀔 때 실행 파일을 빌드하고, `BUYMA-Windows-Executables` 아티팩트로 30일간 제공합니다. 빌드 및 배포 방법은 [사용 매뉴얼](docs/USER_MANUAL.md)과 [EXE 빌드 안내](docs/BUILD_EXE.md)를 참고하세요.
 
 ## 설정 파일과 인증정보
 
