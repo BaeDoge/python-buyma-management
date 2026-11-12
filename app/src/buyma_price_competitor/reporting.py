@@ -76,6 +76,9 @@ async def write_results(
                     dtype="object",
                 ),
             )
+        applied = applied[
+            ["적용일시"] + [column for column in applied.columns if column != "적용일시"]
+        ]
         try:
             tab_index = sheets.index_after(settings.google_result_sheet)
             sheets.append_df(
