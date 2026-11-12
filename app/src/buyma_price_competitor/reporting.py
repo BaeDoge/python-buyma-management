@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -69,7 +70,7 @@ async def write_results(
                 0,
                 "적용일시",
                 pd.Series(
-                    [pd.Timestamp.now(tz="Asia/Seoul").strftime("%Y-%m-%d %H:%M:%S")]
+                    [datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")]
                     * len(applied),
                     index=applied.index,
                     dtype="object",
