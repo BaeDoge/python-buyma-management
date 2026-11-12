@@ -78,6 +78,10 @@ async def write_results(
                     applied,
                     index=tab_index,
                 )
+                sheets.place_after(
+                    settings.google_application_history_sheet,
+                    settings.google_result_sheet,
+                )
                 if logger:
                     logger.info(
                         "가격 변경 적용 이력을 Google Sheet '%s' 탭에 누적했습니다. (%s건)",
