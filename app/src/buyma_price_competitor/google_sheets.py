@@ -44,6 +44,17 @@ class GoogleSheetClient:
                 return index + 1
         raise ValueError(f"Google Sheet 탭을 찾을 수 없습니다: {sheet_name}")
 
+    def place_after(self, sheet_name: str, anchor_name: str) -> None:
+        """Keep a history tab directly after the latest-result tab."""
+        worksheets = self.spreadsheet.worksheets()
+        by_title = {worksheet.title: worksheet for worksheet in worksheets}
+        if sheet_name not in by_title or anchor_name not in by_title:
+            raise ValueError("Google Sheet 탭 위치를 조정할 대상이 없습니다.")
+        ordered = [worksheet for worksheet in worksheets if worksheet.title != sheet_name]
+        anchor = next(i for i, worksheet in enumerate(ordered) if worksheet.title == anchor_name)
+        ordered.insert(anchor + 1, by_title[sheet_name])
+        self.spreadsheet.reorder_worksheets(ordered)
+
     def append_df(
         self, sheet_name: str, df: pd.DataFrame, *, index: int | None = None
     ) -> None:
