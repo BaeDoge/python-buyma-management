@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
-from app.scheduler import ScheduleState, parse_schedule_times
+APP_DIR = Path(__file__).resolve().parents[1]
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
+from scheduler import ScheduleState, parse_schedule_times
 
 
 def test_parse_schedule_times_normalizes_and_deduplicates_values():
