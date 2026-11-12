@@ -92,3 +92,28 @@ def test_checkpoint_results_persists_each_appended_row(tmp_path):
 
     saved = pd.read_csv(path, encoding="utf-8-sig")
     assert saved["상품ID"].astype(str).tolist() == ["123", "456"]
+
+
+
+def test_application_history_tab_is_created_even_when_no_product_was_updated(tmp_path):
+    settings = FakeSettings(tmp_path)
+    sheets = FakeSheets()
+    results = [
+        {
+            "상품ID": "123456789",
+            "현재가": 12000,
+            "신규가": None,
+            "적용 여부": False,
+            "비고": "이미 최저가",
+        }
+    ]
+
+    asyncio.run(write_results(
+        settings, sheets, results, 0, 1, 0,
+        report_path=tmp_path / "reports" / "preview.csv",
+    ))
+
+    history = sheets.appended[1][1]
+    assert history.empty
+    assert "적용일시" in history.columns
+    assert sheets.placed == ("api 가격변경 시트 이력", "api 가격변경 시트")
