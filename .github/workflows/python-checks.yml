@@ -4,7 +4,7 @@ on:
   push:
     branches: ["main", "refactor/simplify-price-workflow"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "refactor/official-api-report-sheet"]
 
 jobs:
   tests:
