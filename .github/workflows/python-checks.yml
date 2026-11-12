@@ -2,7 +2,7 @@ name: Python checks
 
 on:
   push:
-    branches: ["main", "refactor/simplify-price-workflow"]
+    branches: ["main", "refactor/simplify-price-workflow", "feat/scheduled-exe-application-history"]
   pull_request:
     branches: ["main", "refactor/official-api-report-sheet"]
 
