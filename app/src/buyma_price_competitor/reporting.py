@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -53,6 +54,51 @@ async def write_results(
         except Exception:
             if logger:
                 logger.exception("공식 API 이력 시트 업로드 실패")
+
+        # 실제 Product API 요청이 접수된 상품만 별도 적용 시각 이력으로 남깁니다.
+        if "적용 여부" in report.columns:
+            applied = report[
+                report["적용 여부"].map(
+                    lambda value: value is True or str(value).strip().lower() in {"true", "1"}
+                )
+            ].copy()
+        else:
+            applied = report.iloc[0:0].copy()
+
+        if "적용일시" not in applied.columns:
+            applied.insert(
+                0,
+                "적용일시",
+                pd.Series(
+                    [datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")]
+                    * len(applied),
+                    index=applied.index,
+                    dtype="object",
+                ),
+            )
+        applied = applied[
+            ["적용일시"] + [column for column in applied.columns if column != "적용일시"]
+        ]
+        try:
+            tab_index = sheets.index_after(settings.google_result_sheet)
+            sheets.append_df(
+                settings.google_application_history_sheet,
+                applied,
+                index=tab_index,
+            )
+            sheets.place_after(
+                settings.google_application_history_sheet,
+                settings.google_result_sheet,
+            )
+            if logger:
+                logger.info(
+                    "가격 변경 적용 이력을 Google Sheet '%s' 탭에 누적했습니다. (%s건)",
+                    settings.google_application_history_sheet,
+                    len(applied),
+                )
+        except Exception:
+            if logger:
+                logger.exception("가격 변경 적용 시각 이력 업로드 실패")
 
     if logger:
         logger.info("CSV 결과 저장: %s", report_path)

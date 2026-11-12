@@ -47,6 +47,8 @@ async def run_price_competition(
     limit: int | None = None,
     target_product_id: str | None = None,
     expected_new_price: int | None = None,
+    approve_timesale: bool = False,
+    interactive_login: bool = True,
 ) -> None:
     delta = settings.price_delta if price_delta is None else price_delta
     maximum = settings.max_change if max_change is None else max_change
@@ -94,7 +96,10 @@ async def run_price_competition(
             # 공개 경쟁가 수집 및 DRY RUN에는 판매자 로그인이 필요하지 않다.
             if apply:
                 from payload_migration import login_once
-                if not await login_once(page, settings, logger):
+                if not await login_once(
+                    page, settings, logger,
+                    allow_manual_challenge=interactive_login,
+                ):
                     raise RuntimeError("BUYMA 판매자 로그인 검증에 실패하여 가격 변경을 중단했습니다.")
 
             if not rows:
@@ -391,6 +396,7 @@ async def run_price_competition(
                         request_uid = api_response.get("request_uid")
                         request_received_at = api_response.get("request_received_at")
                         result["적용 여부"] = True
+                        result["적용일시"] = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
                         result["비고"] = (
                             f"BUYMA API 요청 접수: {current:,} -> {decision.new_price:,}; "
                             f"request_uid={request_uid or '응답에 없음'} "
@@ -495,12 +501,15 @@ async def run_price_competition(
                     )
 
                 if ready_candidates:
-                    approval = f"APPLY-TIMESALE-{len(ready_candidates)}"
-                    print(f"\n실제 변경 가능한 상품: {len(ready_candidates)}개")
-                    confirmation = input(
-                        f"위 목록 중 변경 가능한 상품의 가격 변경을 승인하려면 {approval} 를 입력하세요: "
-                    ).strip()
-                    if confirmation == approval:
+                    print(f"\n실제 변경 가능한 타임세일 상품: {len(ready_candidates)}개")
+                    if approve_timesale:
+                        confirmation = "y"
+                        logger.info("예약 실행 설정에 따라 타임세일 변경 후보를 자동 승인합니다.")
+                    else:
+                        confirmation = input(
+                            "위 타임세일 상품들의 가격 변경을 진행할까요? (Y/N): "
+                        ).strip().lower()
+                    if confirmation in {"y", "yes"}:
                         for candidate in ready_candidates:
                             row = candidate["result"]
                             product_id = candidate["product_id"]
@@ -516,6 +525,7 @@ async def run_price_competition(
                                 )
                                 request_uid = response.get("request_uid")
                                 row["적용 여부"] = True
+                                row["적용일시"] = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
                                 row["request_uid"] = request_uid
                                 row["request_received_at"] = response.get("request_received_at")
                                 row["비고"] = (

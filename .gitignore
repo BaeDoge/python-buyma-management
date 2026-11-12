@@ -9,3 +9,8 @@ reports/
 __pycache__/
 .pytest_cache/
 *.py[cod]
+
+# Windows executable build output
+dist/
+build/
+*.spec
