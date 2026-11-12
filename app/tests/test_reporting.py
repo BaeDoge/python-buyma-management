@@ -30,6 +30,7 @@ class FakeSettings:
         self.google_result_sheet = "api 가격변경 시트"
         self.google_history_sheet = "[5] 최저가 적용이력"
         self.google_api_history_sheet = "[6] 최저가 적용이력-공식API"
+        self.google_application_history_sheet = "api 가격변경 시트 이력"
 
 
 def test_report_is_appended_to_official_api_history_without_changing_legacy_history(tmp_path):
