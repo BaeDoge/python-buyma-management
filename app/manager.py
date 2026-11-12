@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,16 +30,6 @@ def ask_amount(label: str, default: int) -> int:
             print("1 이상의 금액을 입력해 주세요.")
             continue
         return value
-
-
-def run_script(script: str, label: str) -> None:
-    path = ROOT / "app" / script
-    if not path.exists():
-        print(f"실행 파일을 찾을 수 없습니다: {path}")
-        return
-    print(f"\n[{label}] 시작합니다.")
-    result = subprocess.run([sys.executable, str(path)], cwd=ROOT)
-    print(f"[{label}] 종료 코드: {result.returncode}")
 
 
 def execute(settings: Settings, logger, *, apply: bool, delta: int, max_change: int,
