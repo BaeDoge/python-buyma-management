@@ -14,6 +14,9 @@ class FakeSheets:
         assert sheet_name == "api 가격변경 시트"
         return 3
 
+    def place_after(self, sheet_name, anchor_name):
+        self.placed = (sheet_name, anchor_name)
+
     def replace_df(self, name, frame):
         self.replaced.append((name, frame.copy()))
 
@@ -77,6 +80,7 @@ def test_report_is_appended_to_official_api_history_without_changing_legacy_hist
     assert applied.iloc[0]["적용일시"] == "2026-11-13 10:00:00"
     assert applied.iloc[0]["request_uid"] == "request-1"
     assert sheets.appended[1][2] == 3
+    assert sheets.placed == ("api 가격변경 시트 이력", "api 가격변경 시트")
 
 
 def test_checkpoint_results_persists_each_appended_row(tmp_path):
