@@ -122,3 +122,8 @@ Windows 작업 스케줄러를 이용하면 PC 로그인 후 예약 실행기를
 - Chrome은 실행 PC에 설치되어 있어야 합니다. 이 프로그램은 Chrome 경로를 `config.yaml`에서 읽습니다.
 - EXE 빌드는 인증정보를 포함하지 않습니다.
 - 백신에서 새로 빌드한 EXE를 처음 실행할 때 경고할 수 있습니다. 회사/판매자 PC의 보안 정책을 먼저 확인합니다.
+
+
+## 2-1. GitHub Actions에서 EXE 받기
+
+저장소의 **Actions → Build Windows executables** workflow를 선택해 `Run workflow`를 누르면 Windows runner에서 같은 `build_exe.bat`을 실행합니다. 빌드가 끝나면 실행 기록의 Artifacts에서 `BUYMA-Windows-Executables`를 내려받을 수 있습니다. main에 코드가 push된 경우에도 자동으로 실행됩니다. 아티팩트에는 실행 파일과 예시 설정만 들어가며 실제 `.env`와 `secrets/` 인증정보는 포함하지 않습니다. 아티팩트 보관 기간은 30일.
