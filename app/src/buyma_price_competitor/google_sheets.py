@@ -36,15 +36,27 @@ class GoogleSheetClient:
         worksheet.clear()
         worksheet.update("A1", values)
 
-    def append_df(self, sheet_name: str, df: pd.DataFrame) -> None:
+    def index_after(self, sheet_name: str) -> int:
+        """Return the tab index immediately after the named worksheet."""
+        worksheets = self.spreadsheet.worksheets()
+        for index, worksheet in enumerate(worksheets):
+            if worksheet.title == sheet_name:
+                return index + 1
+        raise ValueError(f"Google Sheet 탭을 찾을 수 없습니다: {sheet_name}")
+
+    def append_df(
+        self, sheet_name: str, df: pd.DataFrame, *, index: int | None = None
+    ) -> None:
         """Append run history without erasing previous executions."""
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
+            target_index = len(self.spreadsheet.worksheets()) if index is None else index
             worksheet = self.spreadsheet.add_worksheet(
                 title=sheet_name,
                 rows=max(1000, len(df) + 10),
                 cols=max(10, len(df.columns) + 2),
+                index=target_index,
             )
 
         incoming_headers = [str(col) for col in df.columns]
