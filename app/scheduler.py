@@ -30,7 +30,7 @@ def parse_schedule_times(raw: str) -> list[str]:
         value = item.strip()
         if not value:
             continue
-        if not re.fullmatch(r"(?:[01]\\d|2[0-3]):[0-5]\\d", value):
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
             raise ValueError(
                 f"BUYMA_SCHEDULE_TIMES 값이 잘못되었습니다: {value!r}. HH:MM 형식으로 입력하세요."
             )
