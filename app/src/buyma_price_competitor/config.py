@@ -46,6 +46,7 @@ class Settings:
     google_history_sheet: str
     google_api_history_sheet: str
     google_result_sheet: str
+    google_application_history_sheet: str
     allow_timesale_price_update: bool
     google_url_column: str
     google_scopes: list[str]
@@ -117,6 +118,7 @@ class Settings:
             google_history_sheet=str(google.get("history_sheet", "[5] 최저가 적용이력")),
             google_api_history_sheet=str(google.get("api_history_sheet", "[6] 최저가 적용이력-공식API")),
             google_result_sheet=str(google.get("result_sheet", "api 가격변경 시트")),
+            google_application_history_sheet=str(google.get("application_history_sheet", "api 가격변경 시트 이력")),
             allow_timesale_price_update=allow_timesale,
             google_url_column=str(google.get("url_column", "URL")),
             google_scopes=list(google.get("scopes") or ["https://www.googleapis.com/auth/spreadsheets"]),
