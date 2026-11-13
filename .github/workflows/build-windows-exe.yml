@@ -1,0 +1,40 @@
+name: Build Windows executables
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feat/scheduled-exe-application-history
+      - fix/scheduler-entrypoint-main-sync
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build EXE files
+        shell: cmd
+        run: build_exe.bat
+
+      - name: Upload Windows executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: BUYMA-Windows-Executables
+          path: |
+            dist/BUYMA-Manager.exe
+            dist/BUYMA-Scheduler.exe
+            dist/config.yaml
+            dist/.env.example
+          if-no-files-found: error
+          retention-days: 30

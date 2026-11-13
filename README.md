@@ -1,105 +1,135 @@
-# BUYMA BESTSHIP 최저가 관리
+# BUYMA 최저가 관리
 
-Google Sheet의 `[2]최저가` 탭에 등록된 URL에서 BESTSHIP 상품과 경쟁 판매자의 가격을 비교합니다. 가격 변경은 BUYMA Product API로 요청합니다. 통화 단위는 JPY(엔)입니다.
+Google Sheets에 등록한 상품 URL을 기준으로 BUYMA의 경쟁 가격을 비교하고, 조건에 맞는 BestShip 상품을 BUYMA Personal Shopper Product API로 변경하는 프로그램입니다.
 
-## 실행
+## 실행 방법
 
-프로젝트 루트에서 최초 1회:
+프로젝트 폴더에서 처음 한 번 실행합니다.
 
-```powershell
+```bat
 uv sync
 ```
 
-이후 매번 아래 명령 하나만 실행합니다.
+메뉴형 프로그램:
 
-```powershell
+```bat
 uv run buyma_price_manager.py
+```
+
+정해진 시간에 자동으로 실행하려면 별도 예약 실행기를 실행합니다.
+
+```bat
+uv run buyma_price_scheduler.py
 ```
 
 ## 메뉴
 
-| 메뉴 | 기능 |
+| 메뉴 | 내용 |
 |---|---|
-| 1 | 전체 상품 가격 비교 미리보기. 실제 가격 변경 없음 |
-| 2 | 상품 ID 하나를 입력해 미리보기 후 해당 상품 하나만 실제 변경 테스트 |
+| 1 | 전체 상품 가격 비교 미리보기 |
+| 2 | 상품 ID 하나를 선택해 미리보기 후 가격 변경 |
 | 3 | 조건에 맞는 전체 상품 가격 변경 |
 | 0 | 종료 |
 
-Google Sheets의 `[2]최저가` 탭에서 URL을 매번 새로 읽습니다. 처음에는 1번으로 비교 결과를 확인하고, 2번으로 단일 상품 변경을 테스트한 뒤 3번 전체 변경을 사용하세요.
+전체 변경은 화면에서 Y/N으로 시작 여부를 결정합니다. 숫자나 긴 확인 문구를 입력할 필요는 없습니다.
 
-### 단일 상품 테스트 (메뉴 2)
+## Google Sheets 탭
 
-1. 테스트할 BUYMA 상품 ID를 입력합니다.
-2. 프로그램이 해당 ID만 공개 상품 페이지에서 찾아 현재가/경쟁 최저가/변경 예정가를 계산합니다.
-3. 화면에 표시된 변경 예정가를 확인합니다.
-4. 실제 변경 확인 질문에 Y를 입력합니다.
-5. 프로그램은 API 요청 직전에 가격을 다시 계산합니다. 미리보기 가격과 달라졌다면 요청을 중단합니다.
+| 탭 이름 | 용도 |
+|---|---|
+| `[2]최저가` | 비교할 BUYMA URL 입력. 실행 때마다 다시 읽습니다. |
+| `api 가격변경 시트` | 가장 최근 실행 결과. 매 실행마다 덮어씁니다. |
+| `api 가격변경 시트 이력` | 실제 가격 변경 API 요청이 접수된 상품의 적용일시(요청 접수 시각), 상품 ID, 변경 전후 가격, request UID를 누적합니다. API는 비동기 처리이므로 최종 상품 화면 반영 시각과 차이가 날 수 있습니다. 결과 탭 바로 다음 위치에 생성됩니다. |
+| `[6] 최저가 적용이력-공식API` | CSV 보고서와 같은 열과 행으로 전체 실행 결과를 누적합니다. |
+| `[5] 최저가 적용이력` | 기존 탭. 프로그램은 이 탭을 변경하지 않습니다. |
 
-다른 상품은 단일 테스트의 API 변경 대상이 되지 않습니다. 단일 테스트는 해당 상품의 공식 API 전체 payload가 준비되어 있어야 하며, payload가 없거나 필수 필드가 빠져 있으면 요청하지 않습니다.
+이름은 `config.yaml`의 `google` 항목에서 조정할 수 있습니다. 탭이 없으면 실행 중 자동 생성합니다.
 
-### 전체 변경 (메뉴 3)
+## 가격 계산
 
-전체 변경은 별도 확인 문구 `APPLY-ALL-변경금액-최대인하폭`를 입력해야 진행됩니다. 단일 상품 테스트를 먼저 완료한 뒤 사용하세요.
+`config.yaml`에서 기본 값을 설정합니다.
 
-## Google Sheets 보고서
+```yaml
+app:
+  price:
+    delta: 10
+    max_change: 50
+```
 
-가격 비교/변경 실행이 끝나면 결과 CSV와 동일한 컬럼 및 행을 Google Sheets에 기록합니다.
+- `delta`: 경쟁 최저가보다 몇 엔 낮출지 지정합니다.
+- `max_change`: 현재 가격에서 한 번에 인하할 수 있는 최대 금액입니다.
 
-- `api 가격변경 시트`: 가장 최근 실행 결과로 덮어씁니다.
-- `[6] 최저가 적용이력-공식API`: 가격 비교/변경 실행 보고서를 실행할 때마다 아래로 누적합니다. 탭이 없으면 자동 생성합니다.
-- `[5] 최저가 적용이력`: 기존 데이터와 탭을 보존합니다. 공식 API 보고서는 이 탭에 추가하지 않습니다.
-- 로컬 CSV 보고서는 `reports/`에 실행별 파일로 저장됩니다.
+타임세일 상품은 `.env`의 `BUYMA_ALLOW_TIMESALE_PRICE_UPDATE`로 제어합니다. false면 제외하고, true면 판매자 편집 화면의 실제 상품 기본 가격을 다시 확인한 뒤 변경 후보로 처리합니다.
 
-새 이력 탭 이름은 `config.yaml`의 `google.api_history_sheet`에서 변경할 수 있습니다. 기본값은 `[6] 최저가 적용이력-공식API`입니다.
+## 예약 실행 설정
 
-## 가격 규칙
+`.env`에 아래 값을 지정합니다.
 
-기본값은 경쟁 최저가보다 10엔 낮게 설정하고, 현재가에서 최대 100엔을 초과해 인하해야 하면 건너뜁니다. 실행할 때 값을 변경할 수 있습니다.
+```env
+BUYMA_SCHEDULE_TIMES=06:00,12:00,18:00,00:00
+BUYMA_SCHEDULE_PRICE_DELTA=10
+BUYMA_SCHEDULE_MAX_CHANGE=50
+BUYMA_SCHEDULE_HEADLESS=true
+```
 
-- 가격 비교: BUYMA 공개 상품 페이지
-- 실제 가격 변경: BUYMA Personal Shopper Product API
-- API의 HTTP 201 및 `request_uid`는 요청 접수이며 최종 가격 반영 완료를 뜻하지 않습니다. BUYMA 상품 화면에서 반영 여부를 확인해야 합니다.
+예약 시각은 PC 현지 시간입니다. `BUYMA-Scheduler.exe` 또는 `buyma_price_scheduler.py`는 실행 상태로 계속 켜 두어야 합니다. 같은 시간에 중복 실행되지 않도록 실행 기록을 `data/scheduler_runs.json`에 저장합니다. 예약 실행 중 로그인 추가 인증이 필요하면 키보드 입력을 기다리지 않고 해당 회차를 중단합니다.
 
-## 설정 파일
+## Windows EXE 빌드
 
-- `config.yaml`: `config.example.yaml`을 복사해 Google Sheet URL과 시트 설정을 입력
+Windows에서 아래 파일을 실행합니다.
+
+```bat
+build_exe.bat
+```
+
+`dist/`에 `BUYMA-Manager.exe`와 `BUYMA-Scheduler.exe`가 만들어집니다. GitHub Actions의 **Build Windows executables** 작업도 수동 실행하거나 main에 반영된 코드가 바뀔 때 실행 파일을 빌드하고, `BUYMA-Windows-Executables` 아티팩트로 30일간 제공합니다. 빌드 및 배포 방법은 [사용 매뉴얼](docs/USER_MANUAL.md)과 [EXE 빌드 안내](docs/BUILD_EXE.md)를 참고하세요.
+
+## 설정 파일과 인증정보
+
+- `config.yaml`: `config.example.yaml`을 복사해 실제 스프레드시트 주소 등을 입력
+- `.env`: BUYMA 로그인, 타임세일 허용 여부 및 예약 실행 환경변수
 - `secrets/service_account.json`: Google 서비스 계정 키
 - `secrets/tokens.json`: BUYMA OAuth 토큰
-- `.env`: OAuth 및 BUYMA 웹 로그인 환경변수
 
-인증정보와 실제 상품 데이터는 Git에 올리지 않습니다.
+실제 `.env`, `config.yaml`, `secrets/`는 저장소에 커밋하지 않습니다.
 
 ## 테스트
 
-```powershell
+```bat
 uv run pytest app/tests -q
 ```
 
-이 테스트는 가짜 HTTP 응답을 사용하는 자동화 테스트입니다. BUYMA에 실제 가격 변경 요청을 보내지 않습니다.
+테스트는 가짜 HTTP 응답과 모의 Google Sheets 객체를 사용하며 실제 BUYMA 상품 가격을 변경하지 않습니다.
 
-## 폴더 구조
+## 주요 파일
 
 ```text
 .
-├── buyma_price_manager.py             # 프로젝트 실행 진입점
-├── config.example.yaml                # 설정 예시
-├── pyproject.toml / uv.lock           # 의존성
+├── buyma_price_manager.py              # 메뉴형 프로그램 시작점
+├── buyma_price_scheduler.py             # 상시 예약 실행 시작점
+├── build_exe.bat                        # Windows EXE 빌드
+├── config.example.yaml
+├── .env.example
+├── docs/
+│   ├── USER_MANUAL.md                   # BestShip 사용자 안내
+│   └── BUILD_EXE.md                     # EXE 생성/업데이트 절차
 └── app/
-    ├── manager.py                     # 메뉴 및 실행 제어
-    ├── migration.py                   # 상품 ID 수집 도구
-    ├── payload_migration.py           # 판매자 로그인/원본 데이터 수집
+    ├── manager.py                       # 메뉴 및 실행 제어
+    ├── scheduler.py                     # 시간표에 따른 반복 실행
+    ├── migration.py                     # 상품 ID 일괄 수집 도구
+    ├── payload_migration.py             # BUYMA 로그인/판매자 데이터 수집
+    ├── tests/
     └── src/buyma_price_competitor/
-        ├── runner.py                  # 가격 비교 및 변경 흐름
-        ├── reporting.py               # CSV 및 Google Sheets 보고서 저장
-        ├── buyma_api.py               # BUYMA 공식 API 통신
-        ├── google_sheets.py           # Google Sheets 입출력
-        ├── config.py                  # 설정 로딩
-        ├── browser.py                 # Chrome/Playwright 실행
-        ├── public_products.py         # 공개 상품/판매자 정보 수집
-        ├── payload_mapper.py          # 판매자 데이터 → API payload 변환
-        ├── payload_store.py           # 상품 데이터 저장
-        ├── source_to_api.py           # 원본 데이터 변환 보조
-        └── pricing.py                 # 가격 결정 규칙
+        ├── runner.py                    # 가격 비교 및 변경 처리
+        ├── reporting.py                 # CSV 및 Google Sheets 보고서
+        ├── buyma_api.py                 # BUYMA Product API
+        ├── google_sheets.py              # Google Sheets 입출력
+        ├── config.py                    # 설정 로딩
+        ├── browser.py                   # Chrome/Playwright 실행
+        ├── public_products.py           # 공개 상품 정보 수집
+        ├── payload_mapper.py            # 판매자 데이터 변환
+        ├── payload_store.py             # 수집 데이터 저장
+        └── pricing.py                   # 가격 계산
 ```
 
-실행 결과는 `logs/`와 `reports/`, 상품 데이터는 `data/`에 저장됩니다. 이 폴더들은 실행 시 자동 생성되며 저장소에는 포함하지 않습니다.
+로컬 실행 결과는 `logs/`, `reports/`, `data/`에 저장됩니다.
