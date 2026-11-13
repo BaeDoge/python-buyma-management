@@ -15,6 +15,21 @@ if errorlevel 1 (
 )
 
 echo.
+if not exist "buyma_price_manager.py" (
+    echo [ERROR] buyma_price_manager.py was not found in the project root.
+    goto :failed
+)
+if not exist "buyma_price_scheduler.py" (
+    echo [ERROR] buyma_price_scheduler.py was not found in the project root.
+    echo Pull the latest project files or restore the scheduler entry-point file.
+    goto :failed
+)
+if not exist "app\scheduler.py" (
+    echo [ERROR] app\scheduler.py was not found.
+    echo Pull the latest project files before building the scheduler.
+    goto :failed
+)
+
 echo [1/4] Syncing project dependencies...
 uv sync
 if errorlevel 1 goto :failed
