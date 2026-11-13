@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/scheduled-exe-application-history
+      - fix/scheduler-entrypoint-main-sync
 
 jobs:
   build:
