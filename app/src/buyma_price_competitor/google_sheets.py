@@ -36,15 +36,38 @@ class GoogleSheetClient:
         worksheet.clear()
         worksheet.update("A1", values)
 
-    def append_df(self, sheet_name: str, df: pd.DataFrame) -> None:
+    def index_after(self, sheet_name: str) -> int:
+        """Return the tab index immediately after the named worksheet."""
+        worksheets = self.spreadsheet.worksheets()
+        for index, worksheet in enumerate(worksheets):
+            if worksheet.title == sheet_name:
+                return index + 1
+        raise ValueError(f"Google Sheet 탭을 찾을 수 없습니다: {sheet_name}")
+
+    def place_after(self, sheet_name: str, anchor_name: str) -> None:
+        """Keep a history tab directly after the latest-result tab."""
+        worksheets = self.spreadsheet.worksheets()
+        by_title = {worksheet.title: worksheet for worksheet in worksheets}
+        if sheet_name not in by_title or anchor_name not in by_title:
+            raise ValueError("Google Sheet 탭 위치를 조정할 대상이 없습니다.")
+        ordered = [worksheet for worksheet in worksheets if worksheet.title != sheet_name]
+        anchor = next(i for i, worksheet in enumerate(ordered) if worksheet.title == anchor_name)
+        ordered.insert(anchor + 1, by_title[sheet_name])
+        self.spreadsheet.reorder_worksheets(ordered)
+
+    def append_df(
+        self, sheet_name: str, df: pd.DataFrame, *, index: int | None = None
+    ) -> None:
         """Append run history without erasing previous executions."""
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
+            target_index = len(self.spreadsheet.worksheets()) if index is None else index
             worksheet = self.spreadsheet.add_worksheet(
                 title=sheet_name,
                 rows=max(1000, len(df) + 10),
                 cols=max(10, len(df.columns) + 2),
+                index=target_index,
             )
 
         incoming_headers = [str(col) for col in df.columns]
