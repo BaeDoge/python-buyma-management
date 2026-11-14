@@ -7,6 +7,7 @@ on:
       - main
       - feat/scheduled-exe-application-history
       - fix/scheduler-entrypoint-main-sync
+      - feat/run-history-summary-and-config-cleanup
 
 jobs:
   build:

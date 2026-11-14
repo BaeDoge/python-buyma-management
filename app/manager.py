@@ -34,13 +34,15 @@ def ask_amount(label: str, default: int) -> int:
 
 def execute(settings: Settings, logger, *, apply: bool, delta: int, max_change: int,
             product_id: str | None = None, expected_new_price: int | None = None,
-            approve_timesale: bool = False) -> list[dict[str, Any]]:
+            approve_timesale: bool = False,
+            execution_mode: str | None = None) -> list[dict[str, Any]]:
     return asyncio.run(
         run_price_competition(
             settings, logger, apply=apply, price_delta=delta,
             max_change=max_change, target_product_id=product_id,
             expected_new_price=expected_new_price,
             approve_timesale=approve_timesale,
+            execution_mode=execution_mode,
         )
     ) or []
 
@@ -66,6 +68,7 @@ def run_single_product_test(settings: Settings, logger) -> None:
     preview = execute(
         settings, logger, apply=False, delta=delta,
         max_change=max_change, product_id=product_id,
+        execution_mode="단일 상품 미리보기",
     )
     row = find_product_result(preview, product_id)
     if not row:
@@ -95,6 +98,7 @@ def run_single_product_test(settings: Settings, logger) -> None:
         settings, logger, apply=True, delta=delta,
         max_change=max_change, product_id=product_id,
         expected_new_price=int(target),
+        execution_mode="단일 상품 변경",
     )
     applied_row = find_product_result(applied, product_id)
     if applied_row:
@@ -115,6 +119,7 @@ def run_all_price_changes(settings: Settings, logger) -> None:
     execute(
         settings, logger, apply=True, delta=delta,
         max_change=max_change, approve_timesale=False,
+        execution_mode="전체 가격 변경",
     )
 
 
@@ -143,7 +148,10 @@ def main() -> int:
             if choice == "1":
                 delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
                 maximum = ask_amount("허용할 최대 인하 폭", settings.max_change)
-                execute(settings, logger, apply=False, delta=delta, max_change=maximum)
+                execute(
+                    settings, logger, apply=False, delta=delta, max_change=maximum,
+                    execution_mode="전체 가격 비교",
+                )
                 print("미리보기 완료. reports/의 CSV에서 상품별 결과를 확인하세요.")
             elif choice == "2":
                 run_single_product_test(settings, logger)

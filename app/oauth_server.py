@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from buyma_price_competitor.config import ROOT
 
 load_dotenv(ROOT / ".env")
+load_dotenv(ROOT / ".env.oauth", override=True)
 
 app = FastAPI(title="BUYMA OAuth")
 state_value: str | None = None

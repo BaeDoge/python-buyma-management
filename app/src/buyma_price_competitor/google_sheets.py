@@ -56,7 +56,12 @@ class GoogleSheetClient:
         self.spreadsheet.reorder_worksheets(ordered)
 
     def append_df(
-        self, sheet_name: str, df: pd.DataFrame, *, index: int | None = None
+        self,
+        sheet_name: str,
+        df: pd.DataFrame,
+        *,
+        index: int | None = None,
+        reset_schema: bool = False,
     ) -> None:
         """Append run history without erasing previous executions."""
         try:
@@ -72,6 +77,14 @@ class GoogleSheetClient:
 
         incoming_headers = [str(col) for col in df.columns]
         existing_values = worksheet.get_all_values()
+
+        # When a tab changes from product-level rows to run summaries, remove the
+        # old layout once. Later runs keep appending under the same new header.
+        if reset_schema and existing_values:
+            existing_headers = [str(col) for col in existing_values[0]]
+            if existing_headers != incoming_headers:
+                worksheet.clear()
+                existing_values = []
 
         if not existing_values:
             headers = incoming_headers

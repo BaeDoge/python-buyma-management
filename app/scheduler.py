@@ -191,6 +191,7 @@ def run_scheduler() -> int:
                             max_change=maximum,
                             approve_timesale=True,
                             interactive_login=False,
+                            execution_mode="예약 실행",
                         )
                     )
                     accepted = sum(
