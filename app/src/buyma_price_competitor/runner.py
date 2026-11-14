@@ -151,6 +151,7 @@ async def run_price_competition(
 
             target_found = False
             for row_index, url in enumerate(rows, start=1):
+                checked_url_count += 1
                 logger.info(
                     "[%s/%s] URL%s: %s",
                     row_index,
@@ -183,6 +184,7 @@ async def run_price_competition(
                     continue
 
                 valid = [p for p in products if p.price is not None]
+                scanned_product_count += len(valid)
                 logger.info(
                     "  상품 %s개 / BestShip 후보 %s개",
                     len(valid),
@@ -223,6 +225,12 @@ async def run_price_competition(
                         break
                 else:
                     own_products = [p for p in valid if collector.is_own_seller(p)]
+
+                for own_product in own_products:
+                    product_key = str(own_product.product_id or "").strip()
+                    if not product_key:
+                        product_key = f"{url}|{own_product.name or own_product.body_index}"
+                    bestship_product_ids.add(product_key)
 
                 competitor_prices = [
                     p.price for p in valid if not collector.is_own_seller(p)
@@ -450,6 +458,8 @@ async def run_price_competition(
                         result["request_received_at"] = request_received_at
                         result["원본 데이터 조회"] = "실시간 조회 및 필수 필드 검증 완료"
                         changed += 1
+                        changed_product_urls.append(url)
+                        changed_product_ids.append(product_id)
                         logger.info(
                             "  BUYMA API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
                             product_id, decision.new_price, request_uid,
@@ -572,6 +582,8 @@ async def run_price_competition(
                                 row["적용일시"] = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
                                 row["request_uid"] = request_uid
                                 row["request_received_at"] = response.get("request_received_at")
+                                changed_product_urls.append(candidate["url"])
+                                changed_product_ids.append(product_id)
                                 row["비고"] = (
                                     f"BUYMA API 요청 접수(할인/타임세일): "
                                     f"{row['현재가']:,} -> {candidate['new_price']:,}; "
@@ -616,7 +628,9 @@ async def run_price_competition(
 
     await write_results(
         settings, sheets, results, changed, already_lowest, no_own,
-        report_path=report_path, logger=logger,
+        report_path=report_path,
+        run_summary=make_run_summary(),
+        logger=logger,
     )
 
     logger.info(
