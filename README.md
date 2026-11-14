@@ -39,7 +39,7 @@ uv run buyma_price_scheduler.py
 |---|---|
 | `[2]최저가` | 비교할 BUYMA URL 입력. 실행 때마다 다시 읽습니다. |
 | `api 가격변경 시트` | 가장 최근 실행 결과. 매 실행마다 덮어씁니다. |
-| `api 가격변경 시트 이력` | 실제 가격 변경 API 요청이 접수된 상품의 적용일시(요청 접수 시각), 상품 ID, 변경 전후 가격, request UID를 누적합니다. API는 비동기 처리이므로 최종 상품 화면 반영 시각과 차이가 날 수 있습니다. 결과 탭 바로 다음 위치에 생성됩니다. |
+| `api 가격변경 시트 이력` | 프로그램 실행 1회당 한 줄씩 실행 시각, 실행 방식, URL/상품 수, 변경 요청 수, 변경된 상품 URL, 가격 기준을 기록합니다. 예전 상품별 기록은 새 요약 형식으로 바뀌며 이후 실행 내역은 계속 누적됩니다. |
 | `[6] 최저가 적용이력-공식API` | CSV 보고서와 같은 열과 행으로 전체 실행 결과를 누적합니다. |
 | `[5] 최저가 적용이력` | 기존 탭. 프로그램은 이 탭을 변경하지 않습니다. |
 
@@ -86,8 +86,9 @@ build_exe.bat
 
 ## 설정 파일과 인증정보
 
-- `config.yaml`: `config.example.yaml`을 복사해 실제 스프레드시트 주소 등을 입력
-- `.env`: BUYMA 로그인, 타임세일 허용 여부 및 예약 실행 환경변수
+- `config.yaml`: BestShip 판매자 정보, Google Sheets 주소, 가격 기준과 Chrome 경로
+- `.env`: BUYMA 로그인, 타임세일 설정 및 예약 실행 시간
+- `.env.oauth.example`: BUYMA OAuth 토큰을 새로 발급할 때만 사용하는 별도 설정 예시
 - `secrets/service_account.json`: Google 서비스 계정 키
 - `secrets/tokens.json`: BUYMA OAuth 토큰
 

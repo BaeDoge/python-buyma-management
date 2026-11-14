@@ -1,6 +1,6 @@
 """Open an HTTPS ngrok tunnel to the local OAuth callback server on port 8000.
 
-Loads NGROK_AUTHTOKEN from the project-root .env file.
+Loads NGROK_AUTHTOKEN from the project-root .env.oauth file.
 This helper only creates the tunnel; it does not start uvicorn.
 """
 from __future__ import annotations
@@ -14,12 +14,13 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
+load_dotenv(ROOT / ".env.oauth", override=True)
 
 
 def main() -> None:
     if not os.environ.get("NGROK_AUTHTOKEN"):
         raise SystemExit(
-            f"NGROK_AUTHTOKEN 환경변수가 없습니다. .env 파일을 확인하세요: {ROOT / '.env'}"
+            f"NGROK_AUTHTOKEN 환경변수가 없습니다. .env.oauth 파일을 확인하세요: {ROOT / '.env.oauth'}"
         )
 
     listener = ngrok.forward("127.0.0.1:8000", authtoken_from_env=True)
