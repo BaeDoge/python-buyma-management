@@ -108,6 +108,7 @@ def test_run_history_appends_one_summary_row_and_resets_old_layout(tmp_path):
         "확인한 URL 수": 10,
         "전체 조회 상품 수": 76,
         "BestShip 상품 수": 2,
+        "변경된 상품 수": 1,
         "변경 요청 접수 수": 1,
         "변경하지 않은 BestShip 상품 수": 1,
         "변경된 상품 ID 목록": "123",
@@ -140,6 +141,7 @@ def test_run_history_appends_one_summary_row_and_resets_old_layout(tmp_path):
     assert len(history) == 1
     assert history.iloc[0]["실행 구분"] == "예약 실행"
     assert history.iloc[0]["전체 조회 상품 수"] == 76
+    assert history.iloc[0]["변경된 상품 수"] == 1
     assert history.iloc[0]["변경 요청 접수 수"] == 1
     assert "item/123/" in history.iloc[0]["변경된 상품 URL 목록"]
     assert sheets.appended[1][2] == 3
