@@ -1,6 +1,4 @@
-# BUYMA 가격 경쟁 자동화 설정
-# 실제 설정: config.example.yaml -> config.yaml
-# config.yaml은 Git에 커밋하지 않습니다.
+# 실제 설정 파일은 이 파일을 config.yaml로 복사해서 사용합니다.
 
 app:
   own_seller:
@@ -8,49 +6,22 @@ app:
     id: "12217668"
 
   price:
-    delta: 10
-    max_change: 50
-    # 할인/타임세일 허용 여부는 .env의 BUYMA_ALLOW_TIMESALE_PRICE_UPDATE로 설정
+    delta: 10       # 경쟁 최저가보다 낮출 금액(JPY)
+    max_change: 50  # 한 번에 내릴 수 있는 최대 금액(JPY)
 
   browser:
-    headless: false
-    slow_mo: 250
-    max_retry: 5
-    page_wait_ms: 1500
     executable_paths:
       - "C:/Program Files/Google/Chrome/Application/chrome.exe"
       - "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"
 
-  buyma:
-    base_url: "https://personal-shopper-api.buyma.com"
-
 google:
-  scopes:
-    - "https://www.googleapis.com/auth/spreadsheets"
   sheet_url: "YOUR_GOOGLE_SHEET_URL"
   price_sheet: "[2]최저가"
-  history_sheet: "[5] 최저가 적용이력" # 기존 이력 탭(유지)
-  api_history_sheet: "[6] 최저가 적용이력-공식API"
   result_sheet: "api 가격변경 시트"
+  api_history_sheet: "[6] 최저가 적용이력-공식API"
   application_history_sheet: "api 가격변경 시트 이력"
   url_column: "URL"
 
 paths:
   google_service_account: "secrets/service_account.json"
   buyma_tokens: "secrets/tokens.json"
-  product_payloads: "data/buyma_products.json"
-  logs: "logs"
-  reports: "reports"
-  migration_debug: "data/migration_debug"
-
-# BUYMA 공개 가격비교 페이지의 상품 카드
-# 기존 프로젝트의 selector를 기본값으로 유지합니다.
-selectors:
-  product_card: ".product_body"
-  product_name: ".product_name a"
-  product_price:
-    selector: ".product_name a"
-    attribute: "price"
-  product_seller: ".product_Buyer a"
-  product_timesale: ".product_timesale_label"
-  product_link: "a[href]"
