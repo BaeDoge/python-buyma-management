@@ -71,6 +71,10 @@ def _friendly_reason(value: object, *, applied: bool = False) -> str:
             return "판매자 화면에서 확인한 상품 번호가 대상 상품과 달라 변경하지 않았습니다."
         if "API 변환 필드가 부족" in detail or "필수 필드 누락" in detail:
             return "가격 변경에 필요한 상품 정보 일부를 판매자 화면에서 확인하지 못했습니다."
+        if "판매자 페이지" in detail or "판매자 편집 화면" in detail:
+            return "판매자 편집 화면에서 최신 상품 정보를 확인하지 못해 변경하지 않았습니다."
+        if "商品価格" in detail and ("비어" in detail or "0 이하" in detail):
+            return "판매자 화면에서 실제 상품 가격을 확인하지 못해 변경하지 않았습니다."
         return f"상품 정보를 확인하는 중 변경하지 않았습니다. 상세 내용: {detail}"
 
     if reason.startswith("공개 표시 가격과 실제 商品価格 불일치:"):
@@ -80,6 +84,9 @@ def _friendly_reason(value: object, *, applied: bool = False) -> str:
         ).replace(
             "BUYMA 할인/타임세일 가능성으로 제외",
             "할인 또는 타임세일 가격일 수 있어 변경하지 않았습니다.",
+        ).replace(
+            " (BUYMA_ALLOW_TIMESALE_PRICE_UPDATE=false)",
+            "",
         )
 
     if "미리보기 가격과" in reason and "달라" in reason:
