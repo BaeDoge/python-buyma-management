@@ -49,21 +49,71 @@ async def run_price_competition(
     expected_new_price: int | None = None,
     approve_timesale: bool = False,
     interactive_login: bool = True,
+    execution_mode: str | None = None,
 ) -> None:
+    run_started_at = datetime.now().astimezone()
     delta = settings.price_delta if price_delta is None else price_delta
     maximum = settings.max_change if max_change is None else max_change
+    if execution_mode is None:
+        if target_product_id:
+            execution_mode = "단일 상품 변경" if apply else "단일 상품 미리보기"
+        else:
+            execution_mode = "전체 가격 변경" if apply else "전체 가격 비교"
+
+    stamp = run_started_at.strftime("%Y%m%d_%H%M%S")
+    report_path = settings.reports_dir / f"price_competition_{stamp}.csv"
+    results: CheckpointResults = CheckpointResults(report_path)
+    deferred_candidates: list[dict[str, Any]] = []
+    changed = skipped = already_lowest = no_own = 0
+    checked_url_count = 0
+    scanned_product_count = 0
+    bestship_product_ids: set[str] = set()
+    changed_product_urls: list[str] = []
+    changed_product_ids: list[str] = []
 
     sheets = GoogleSheetClient(
         settings.google_service_account,
         settings.google_scopes,
         settings.google_sheet_url,
     )
-    # 단일/전체 모두 Google Sheet의 URL을 기준으로 공개 상품을 실시간 조회한다.
-    # 상품 ID나 API payload 사전 수집 파일은 가격 변경의 선행 조건이 아니다.
+    # [2]최저가 탭에서 매 실행마다 비교 URL을 새로 읽습니다.
     rows = collect_sheet_urls(sheets, settings, limit)
+
+    def make_run_summary() -> dict[str, Any]:
+        finished_at = datetime.now().astimezone()
+        unique_changed_urls = list(dict.fromkeys(changed_product_urls))
+        unique_changed_ids = list(dict.fromkeys(changed_product_ids))
+        return {
+            "실행 ID": stamp,
+            "실행 구분": execution_mode,
+            "실행 시작 시각": run_started_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "실행 종료 시각": finished_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "등록 URL 수": len(rows),
+            "확인한 URL 수": checked_url_count,
+            "가격 확인된 상품 수": scanned_product_count,
+            "BestShip 상품 수": len(bestship_product_ids),
+            "변경 요청 접수 수": changed,
+            "변경하지 않은 BestShip 상품 수": max(0, len(bestship_product_ids) - changed),
+            "변경된 상품 ID 목록": "\n".join(unique_changed_ids),
+            "변경된 상품 URL 목록": "\n".join(unique_changed_urls),
+            "가격 비교 기준": f"경쟁 최저가보다 {delta:,}엔 낮게",
+            "1회 최대 인하 폭": f"{maximum:,}엔",
+            "타임세일 상품 처리": "포함" if settings.allow_timesale_price_update else "제외",
+            "실행 결과": (
+                f"가격 변경 요청 {changed}개 접수"
+                if apply else "가격 비교 미리보기 완료 (실제 가격 변경 없음)"
+            ),
+        }
+
     if not rows:
-        logger.info("Google Sheet URL 컬럼에 처리할 URL이 없습니다.")
-        return []
+        logger.info("Google Sheet [2]최저가 탭에 처리할 URL이 없습니다.")
+        await write_results(
+            settings, sheets, results, changed, already_lowest, no_own,
+            report_path=report_path,
+            run_summary=make_run_summary(),
+            logger=logger,
+        )
+        return results
 
     api_client = None
     if apply:
@@ -76,12 +126,6 @@ async def run_price_competition(
         api_client.validate_token_file()
 
     collector = PublicProductCollector(settings, logger)
-
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = settings.reports_dir / f"price_competition_{stamp}.csv"
-    results: CheckpointResults = CheckpointResults(report_path)
-    deferred_candidates: list[dict[str, Any]] = []
-    changed = skipped = already_lowest = no_own = 0
 
     async with async_playwright() as playwright:
         page, context, browser = await launch_chrome(
