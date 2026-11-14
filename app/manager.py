@@ -68,6 +68,7 @@ def run_single_product_test(settings: Settings, logger) -> None:
     preview = execute(
         settings, logger, apply=False, delta=delta,
         max_change=max_change, product_id=product_id,
+        execution_mode="단일 상품 미리보기",
     )
     row = find_product_result(preview, product_id)
     if not row:
