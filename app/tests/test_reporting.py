@@ -94,7 +94,7 @@ def test_run_history_appends_one_summary_row_and_resets_old_layout(tmp_path):
             "URL": "https://www.buyma.com/item/456/",
             "상품ID": "456",
             "현재가": 15000,
-            "新規": None,
+            "신규가": None,
             "적용 여부": False,
             "비고": "이미 최저가",
         },
