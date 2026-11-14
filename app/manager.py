@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -33,23 +32,15 @@ def ask_amount(label: str, default: int) -> int:
         return value
 
 
-def run_script(script: str, label: str) -> None:
-    path = ROOT / "app" / script
-    if not path.exists():
-        print(f"실행 파일을 찾을 수 없습니다: {path}")
-        return
-    print(f"\n[{label}] 시작합니다.")
-    result = subprocess.run([sys.executable, str(path)], cwd=ROOT)
-    print(f"[{label}] 종료 코드: {result.returncode}")
-
-
 def execute(settings: Settings, logger, *, apply: bool, delta: int, max_change: int,
-            product_id: str | None = None, expected_new_price: int | None = None) -> list[dict[str, Any]]:
+            product_id: str | None = None, expected_new_price: int | None = None,
+            approve_timesale: bool = False) -> list[dict[str, Any]]:
     return asyncio.run(
         run_price_competition(
             settings, logger, apply=apply, price_delta=delta,
             max_change=max_change, target_product_id=product_id,
             expected_new_price=expected_new_price,
+            approve_timesale=approve_timesale,
         )
     ) or []
 
@@ -116,12 +107,15 @@ def run_all_price_changes(settings: Settings, logger) -> None:
     delta = ask_amount("경쟁 최저가보다 낮출 금액", settings.price_delta)
     max_change = ask_amount("허용할 최대 인하 폭", settings.max_change)
     print("\n[전체 가격 변경]")
-    print("Google Sheet에 등록된 전체 URL 중 조건에 맞는 모든 준비된 상품에 API 요청을 보냅니다.")
-    confirmation = input(f"전체 변경을 승인하려면 APPLY-ALL-{delta}-{max_change} 를 입력하세요: ").strip()
-    if confirmation != f"APPLY-ALL-{delta}-{max_change}":
-        print("확인 문구가 일치하지 않아 취소했습니다.")
+    print("Google Sheet에 등록된 URL 중 가격 변경 조건에 맞는 상품을 처리합니다.")
+    confirmation = input("가격 변경을 시작할까요? (Y/N): ").strip().lower()
+    if confirmation not in {"y", "yes"}:
+        print("취소했습니다.")
         return
-    execute(settings, logger, apply=True, delta=delta, max_change=max_change)
+    execute(
+        settings, logger, apply=True, delta=delta,
+        max_change=max_change, approve_timesale=False,
+    )
 
 
 def main() -> int:

@@ -136,7 +136,13 @@ async def verify_session(page, logger: logging.Logger) -> bool:
     return False
 
 
-async def login_once(page, settings: Settings, logger: logging.Logger) -> bool:
+async def login_once(
+    page,
+    settings: Settings,
+    logger: logging.Logger,
+    *,
+    allow_manual_challenge: bool = True,
+) -> bool:
     await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
     if await verify_session(page, logger):
         return True
@@ -172,6 +178,9 @@ async def login_once(page, settings: Settings, logger: logging.Logger) -> bool:
     if await verify_session(page, logger):
         return True
     if not settings.headless:
+        if not allow_manual_challenge:
+            logger.error("예약 실행 중 추가 인증이 필요하여 이번 실행을 중단합니다.")
+            return False
         logger.warning("추가 인증/CAPTCHA가 있다면 브라우저에서 직접 완료한 후 Enter를 누르세요.")
         try:
             await asyncio.to_thread(input, "로그인 완료 후 Enter: ")
