@@ -599,11 +599,11 @@ async def run_price_competition(
                                 row["적용 여부"] = False
                                 row["비고"] = f"변경하지 않았습니다: {exc}"
                                 skipped += 1
-                                logger.exception("할인/타임세일 API 변경 실패: %s", product_id)
+                                logger.exception("타임세일 상품을 처리하지 못했습니다: %s", product_id)
                     else:
                         for candidate in ready_candidates:
                             candidate["result"]["비고"] = (
-                                "할인/타임세일 가격 변경 취소: 최종 승인 문구 불일치"
+                                "타임세일 상품은 이번 실행에서 변경하지 않도록 선택했습니다."
                             )
                         logger.info("할인/타임세일 가격 변경을 승인하지 않아 요청하지 않았습니다.")
                 results.checkpoint()
