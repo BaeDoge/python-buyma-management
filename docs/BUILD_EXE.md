@@ -56,9 +56,9 @@ dist/
 2. `config.yaml`에 실제 Google Sheets 주소, 탭 이름과 Chrome 경로를 입력합니다.
 3. `secrets/service_account.json`에 Google 서비스 계정 키를 넣습니다.
 4. `secrets/tokens.json`에 BUYMA OAuth 토큰을 넣습니다.
-
-`NGROK_AUTHTOKEN`, `BUYMA_CLIENT_ID`, `BUYMA_CLIENT_SECRET`, `BUYMA_REDIRECT_URI`는 매일 가격을 비교/변경할 때 쓰지 않습니다. BUYMA OAuth 토큰을 처음 발급하거나 다시 발급할 때만 `.env.oauth.example`을 참고해 별도로 준비합니다.
 5. Google 스프레드시트를 해당 서비스 계정 이메일에 공유합니다.
+
+`NGROK_AUTHTOKEN`, `BUYMA_CLIENT_ID`, `BUYMA_CLIENT_SECRET`, `BUYMA_REDIRECT_URI`는 매일 가격을 비교/변경할 때 쓰지 않습니다. BUYMA OAuth 토큰을 처음 발급하거나 다시 발급할 때만 `.env.oauth.example`을 `.env.oauth`로 복사해 별도로 준비합니다.
 
 OAuth 토큰이 아직 없다면 기존 OAuth 설정 절차를 먼저 진행합니다. `app/oauth_server.py`와 `app/ngrok_tunnel.py`는 OAuth 토큰 발급에 사용하는 도구이므로 저장소에서 제거하지 않습니다.
 
