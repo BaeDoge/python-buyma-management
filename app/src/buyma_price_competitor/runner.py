@@ -90,7 +90,7 @@ async def run_price_competition(
             "실행 종료 시각": finished_at.strftime("%Y-%m-%d %H:%M:%S"),
             "등록 URL 수": len(rows),
             "확인한 URL 수": checked_url_count,
-            "가격 확인된 상품 수": scanned_product_count,
+            "전체 조회 상품 수": scanned_product_count,
             "BestShip 상품 수": len(bestship_product_ids),
             "변경 요청 접수 수": changed,
             "변경하지 않은 BestShip 상품 수": max(0, len(bestship_product_ids) - changed),
