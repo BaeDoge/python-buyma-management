@@ -55,7 +55,7 @@ def _friendly_reason(value: object, *, applied: bool = False) -> str:
     if reason.startswith("공개 페이지 처리 실패:"):
         return "BUYMA 페이지 정보를 읽지 못해 변경하지 않았습니다. 다시 실행해 확인해 주세요."
 
-    if reason.startswith("BUYMA API 가격 변경 오류:") or reason.startswith("할인/타임세일 API 변경 실패:"):
+    if reason.startswith("변경하지 않았습니다:") or reason.startswith("BUYMA API 가격 변경 오류:") or reason.startswith("할인/타임세일 API 변경 실패:"):
         detail = reason.split(":", 1)[1].strip()
         if "HTTP 401" in detail:
             return "BUYMA 인증 정보가 만료되었거나 유효하지 않아 변경하지 않았습니다. 다시 로그인하거나 API 토큰을 확인해 주세요."
@@ -67,7 +67,11 @@ def _friendly_reason(value: object, *, applied: bool = False) -> str:
             return "BUYMA 요청 횟수 제한에 도달해 변경하지 않았습니다. 다음 실행 때 다시 확인해 주세요."
         if any(code in detail for code in ("HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504")):
             return "BUYMA 서비스가 일시적으로 응답하지 않아 변경하지 않았습니다. 다음 실행 때 다시 확인해 주세요."
-        return f"BUYMA가 가격 변경 요청을 접수하지 않았습니다. 상세 내용: {detail}"
+        if "상품 ID 불일치" in detail or "상품ID 불일치" in detail:
+            return "판매자 화면에서 확인한 상품 번호가 대상 상품과 달라 변경하지 않았습니다."
+        if "API 변환 필드가 부족" in detail or "필수 필드 누락" in detail:
+            return "가격 변경에 필요한 상품 정보 일부를 판매자 화면에서 확인하지 못했습니다."
+        return f"상품 정보를 확인하는 중 변경하지 않았습니다. 상세 내용: {detail}"
 
     if reason.startswith("공개 표시 가격과 실제 商品価格 불일치:"):
         return reason.replace(
@@ -90,8 +94,10 @@ def _friendly_reason(value: object, *, applied: bool = False) -> str:
     if "BestShip 상품" in reason and ("없습니다" in reason or "확인되지 않아" in reason):
         return "해당 URL에서 BestShip 판매자 상품을 확인하지 못했습니다."
 
-    if reason.startswith("할인/타임세일 상품 실시간 가격 확인 실패:"):
+    if reason.startswith("할인/타임세일 상품 실시간 가격 확인 실패:") or reason.startswith("타임세일 상품의 판매자 실제 가격과 상품 정보를 확인하지 못해 변경하지 않았습니다:"):
         return "타임세일 상품의 판매자 실제 가격이나 상품 정보를 확인하지 못해 변경하지 않았습니다."
+    if "타임세일 가격 변경 취소" in reason or "최종 승인 문구 불일치" in reason:
+        return "타임세일 상품은 이번 실행에서 변경하지 않도록 선택했습니다."
 
     if reason.startswith("판매자 페이지에서"):
         return "판매자 상품 정보를 확인하지 못해 변경하지 않았습니다."
