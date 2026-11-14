@@ -152,6 +152,16 @@ async def write_results(
     report = _detail_report(results)
     report.to_csv(report_path, index=False, encoding="utf-8-sig")
 
+    if report.empty:
+        try:
+            sheets.replace_df(
+                settings.google_result_sheet,
+                pd.DataFrame(columns=["URL", "상품ID", "변경 여부", "처리 내용"]),
+            )
+        except Exception:
+            if logger:
+                logger.exception("빈 실행 결과를 최신 결과 탭에 반영하지 못했습니다.")
+
     if not report.empty:
         try:
             sheets.replace_df(settings.google_result_sheet, report)
