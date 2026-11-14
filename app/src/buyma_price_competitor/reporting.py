@@ -136,6 +136,12 @@ def _detail_report(results) -> pd.DataFrame:
             "실시간 商品価格 확인 및 API 필수 필드 검증 완료": "판매자 화면에서 실제 상품 가격과 정보를 확인했습니다.",
         })
 
+    report = report.rename(columns={
+        "적용 여부": "변경 요청 접수 여부",
+        "적용일시": "요청 기록 시각",
+        "request_uid": "BUYMA 요청 ID",
+        "request_received_at": "BUYMA 응답 접수 시각",
+    })
     return report
 
 
@@ -162,7 +168,7 @@ async def write_results(
         try:
             sheets.replace_df(
                 settings.google_result_sheet,
-                pd.DataFrame(columns=["URL", "상품ID", "변경 여부", "처리 내용"]),
+                pd.DataFrame(columns=["URL", "상품ID", "변경 요청 접수 여부", "처리 내용"]),
             )
         except Exception:
             if logger:
