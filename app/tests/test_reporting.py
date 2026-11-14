@@ -167,7 +167,7 @@ def test_empty_run_still_records_execution_summary(tmp_path):
 
     assert sheets.replaced[0][0] == "api 가격변경 시트"
     assert list(sheets.replaced[0][1].columns) == [
-        "URL", "상품ID", "변경 여부", "처리 내용"
+        "URL", "상품ID", "변경 요청 접수 여부", "처리 내용"
     ]
     assert len(sheets.appended) == 1
     assert sheets.appended[0][0] == "api 가격변경 시트 이력"
