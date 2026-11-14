@@ -465,7 +465,7 @@ async def run_price_competition(
                             product_id, decision.new_price, request_uid,
                         )
                     except Exception as exc:
-                        result["비고"] = f"BUYMA API 가격 변경 오류: {exc}"
+                        result["비고"] = f"변경하지 않았습니다: {exc}"
                         skipped += 1
                         logger.exception("  API 가격 변경 실패: %s", product_id)
 
@@ -538,7 +538,7 @@ async def run_price_competition(
                             ready_candidates.append(candidate)
                     except Exception as exc:
                         row["적용 여부"] = False
-                        row["비고"] = f"할인/타임세일 상품 실시간 가격 확인 실패: {exc}"
+                        row["비고"] = f"타임세일 상품의 판매자 실제 가격과 상품 정보를 확인하지 못해 변경하지 않았습니다: {exc}"
                         skipped += 1
                         logger.exception("  할인/타임세일 상품 확인 실패: %s", product_id)
 
@@ -597,7 +597,7 @@ async def run_price_competition(
                                 )
                             except Exception as exc:
                                 row["적용 여부"] = False
-                                row["비고"] = f"할인/타임세일 API 변경 실패: {exc}"
+                                row["비고"] = f"변경하지 않았습니다: {exc}"
                                 skipped += 1
                                 logger.exception("할인/타임세일 API 변경 실패: %s", product_id)
                     else:
