@@ -164,107 +164,55 @@ async def write_results(
     run_summary: dict | None = None,
     logger=None,
 ):
-    """Save product details, the latest report, and one summary row per execution."""
+    """Append one run summary and its product rows to two linked history tabs."""
     settings.reports_dir.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     report = _detail_report(results)
+    if report.empty:
+        report = pd.DataFrame(columns=[
+            "URL", "상품ID", "상품명", "현재가", "최저가", "신규가",
+            "변경 요청 접수 여부", "처리 내용", "BUYMA 요청 ID",
+        ])
+
+    summary_values = dict(run_summary or {})
+    run_id = str(summary_values.get("변경 ID", "")).strip()
+    if not run_id:
+        raise ValueError("실행 이력에 사용할 변경 ID가 없습니다.")
+
+    report.insert(0, "변경 ID", run_id)
     report.to_csv(report_path, index=False, encoding="utf-8-sig")
 
-    if report.empty:
-        try:
-            sheets.replace_df(
-                settings.google_result_sheet,
-                pd.DataFrame(columns=["URL", "상품ID", "변경 요청 접수 여부", "처리 내용"]),
+    # 실행 이력에는 실행당 정확히 한 행만 추가합니다.
+    summary = pd.DataFrame([summary_values])
+    try:
+        sheets.append_df(settings.google_run_history_sheet, summary)
+        if logger:
+            logger.info(
+                "실행 이력을 '%s' 탭에 기록했습니다. 변경 ID=%s",
+                settings.google_run_history_sheet,
+                run_id,
             )
-        except Exception:
-            if logger:
-                logger.exception("빈 실행 결과를 최신 결과 탭에 반영하지 못했습니다.")
+    except Exception:
+        if logger:
+            logger.exception("실행 이력을 Google Sheets에 저장하지 못했습니다.")
+        raise
 
-    if not report.empty:
+    # 실행 상세이력에는 상품별 한 행을 추가하고, 같은 변경 ID로 실행 이력과 연결합니다.
+    if not report.empty and len(results) > 0:
         try:
-            sheets.replace_df(settings.google_result_sheet, report)
-            if logger:
-                logger.info("최신 상품별 결과를 '%s' 탭에 저장했습니다.", settings.google_result_sheet)
-        except Exception:
-            if logger:
-                logger.exception("최신 상품별 결과를 Google Sheets에 저장하지 못했습니다.")
-
-        try:
-            sheets.append_df(settings.google_api_history_sheet, report)
-            if logger:
-                logger.info("상품별 보고서를 '%s' 탭에 추가했습니다.", settings.google_api_history_sheet)
-        except Exception:
-            if logger:
-                logger.exception("공식 API 상품별 보고서를 Google Sheets에 저장하지 못했습니다.")
-
-    if run_summary is not None:
-        summary = pd.DataFrame([run_summary])
-        try:
-            tab_index = sheets.index_after(settings.google_result_sheet)
-            sheets.append_df(
-                settings.google_application_history_sheet,
-                summary,
-                index=tab_index,
-                reset_schema=True,
-            )
-            sheets.place_after(
-                settings.google_application_history_sheet,
-                settings.google_result_sheet,
-            )
+            sheets.append_df(settings.google_detail_history_sheet, report)
             if logger:
                 logger.info(
-                    "실행 요약을 '%s' 탭에 기록했습니다.",
-                    settings.google_application_history_sheet,
+                    "상품별 상세이력을 '%s' 탭에 기록했습니다. 변경 ID=%s / %s건",
+                    settings.google_detail_history_sheet,
+                    run_id,
+                    len(report),
                 )
         except Exception:
             if logger:
-                logger.exception("실행 요약을 Google Sheets에 저장하지 못했습니다.")
-
-        # 실제 Product API 요청이 접수된 상품만 별도 적용 시각 이력으로 남깁니다.
-        if "적용 여부" in report.columns:
-            applied = report[
-                report["적용 여부"].map(
-                    lambda value: value is True or str(value).strip().lower() in {"true", "1"}
-                )
-            ].copy()
-        else:
-            applied = report.iloc[0:0].copy()
-
-        if "적용일시" not in applied.columns:
-            applied.insert(
-                0,
-                "적용일시",
-                pd.Series(
-                    [datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")]
-                    * len(applied),
-                    index=applied.index,
-                    dtype="object",
-                ),
-            )
-        applied = applied[
-            ["적용일시"] + [column for column in applied.columns if column != "적용일시"]
-        ]
-        try:
-            tab_index = sheets.index_after(settings.google_result_sheet)
-            sheets.append_df(
-                settings.google_application_history_sheet,
-                applied,
-                index=tab_index,
-            )
-            sheets.place_after(
-                settings.google_application_history_sheet,
-                settings.google_result_sheet,
-            )
-            if logger:
-                logger.info(
-                    "가격 변경 적용 이력을 Google Sheet '%s' 탭에 누적했습니다. (%s건)",
-                    settings.google_application_history_sheet,
-                    len(applied),
-                )
-        except Exception:
-            if logger:
-                logger.exception("가격 변경 적용 시각 이력 업로드 실패")
+                logger.exception("상품별 상세이력을 Google Sheets에 저장하지 못했습니다.")
+            raise
 
     if logger:
         logger.info("상품별 CSV 보고서 저장: %s", report_path)
