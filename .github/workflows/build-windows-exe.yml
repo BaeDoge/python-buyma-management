@@ -8,6 +8,7 @@ on:
       - feat/scheduled-exe-application-history
       - fix/scheduler-entrypoint-main-sync
       - feat/run-history-summary-and-config-cleanup
+      - feat/two-tab-linked-execution-history
 
 jobs:
   build:
