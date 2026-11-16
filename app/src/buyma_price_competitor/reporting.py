@@ -185,7 +185,7 @@ async def write_results(
     # 실행 이력에는 실행당 정확히 한 행만 추가합니다.
     summary = pd.DataFrame([summary_values])
     try:
-        sheets.append_df(settings.google_run_history_sheet, summary)
+        sheets.append_df(settings.google_run_history_sheet, summary, reset_schema=True)
         if logger:
             logger.info(
                 "실행 이력을 '%s' 탭에 기록했습니다. 변경 ID=%s",
@@ -200,7 +200,7 @@ async def write_results(
     # 실행 상세이력에는 상품별 한 행을 추가하고, 같은 변경 ID로 실행 이력과 연결합니다.
     if not report.empty and len(results) > 0:
         try:
-            sheets.append_df(settings.google_detail_history_sheet, report)
+            sheets.append_df(settings.google_detail_history_sheet, report, reset_schema=True)
             if logger:
                 logger.info(
                     "상품별 상세이력을 '%s' 탭에 기록했습니다. 변경 ID=%s / %s건",
