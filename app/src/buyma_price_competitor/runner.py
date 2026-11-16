@@ -68,8 +68,6 @@ async def run_price_competition(
     checked_url_count = 0
     scanned_product_count = 0
     bestship_product_ids: set[str] = set()
-    changed_product_urls: list[str] = []
-    changed_product_ids: list[str] = []
 
     sheets = GoogleSheetClient(
         settings.google_service_account,
@@ -458,8 +456,6 @@ async def run_price_competition(
                         result["request_received_at"] = request_received_at
                         result["원본 데이터 조회"] = "실시간 조회 및 필수 필드 검증 완료"
                         changed += 1
-                        changed_product_urls.append(url)
-                        changed_product_ids.append(product_id)
                         logger.info(
                             "  BUYMA API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
                             product_id, decision.new_price, request_uid,
@@ -582,8 +578,6 @@ async def run_price_competition(
                                 row["적용일시"] = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
                                 row["request_uid"] = request_uid
                                 row["request_received_at"] = response.get("request_received_at")
-                                changed_product_urls.append(candidate["url"])
-                                changed_product_ids.append(product_id)
                                 row["비고"] = (
                                     f"BUYMA API 요청 접수(할인/타임세일): "
                                     f"{row['현재가']:,} -> {candidate['new_price']:,}; "
