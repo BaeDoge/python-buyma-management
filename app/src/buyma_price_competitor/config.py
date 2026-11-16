@@ -43,9 +43,8 @@ class Settings:
     buyma_base_url: str
     google_sheet_url: str
     google_price_sheet: str
-    google_api_history_sheet: str
-    google_result_sheet: str
-    google_application_history_sheet: str
+    google_run_history_sheet: str
+    google_detail_history_sheet: str
     allow_timesale_price_update: bool
     google_url_column: str
     google_scopes: list[str]
@@ -114,9 +113,8 @@ class Settings:
             buyma_base_url=str(buyma.get("base_url", "https://personal-shopper-api.buyma.com")).rstrip("/"),
             google_sheet_url=str(google.get("sheet_url", "")),
             google_price_sheet=str(google.get("price_sheet", "[2]최저가")),
-            google_api_history_sheet=str(google.get("api_history_sheet", "[6] 최저가 적용이력-공식API")),
-            google_result_sheet=str(google.get("result_sheet", "api 가격변경 시트")),
-            google_application_history_sheet=str(google.get("application_history_sheet", "api 가격변경 시트 이력")),
+            google_run_history_sheet=str(google.get("run_history_sheet", "실행 이력")),
+            google_detail_history_sheet=str(google.get("detail_history_sheet", "실행 상세이력")),
             allow_timesale_price_update=allow_timesale,
             google_url_column=str(google.get("url_column", "URL")),
             google_scopes=list(google.get("scopes") or ["https://www.googleapis.com/auth/spreadsheets"]),
