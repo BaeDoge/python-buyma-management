@@ -8,7 +8,7 @@ A Python application that compares competitor prices on BUYMA and prepares contr
 - Compares listed prices and calculates a target price using configurable rules
 - Previews proposed changes before applying them
 - Supports single-product and bulk update workflows through the BUYMA Personal Shopper Product API
-- Stores execution summaries and product results in Google Sheets and CSV
+- Stores one summary row per execution and one detail row per product, linked by a readable daily sequence ID
 - Provides a scheduler and Windows executable builds
 
 ## How pricing is controlled
