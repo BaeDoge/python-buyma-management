@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,25 @@ class GoogleSheetClient:
     def read_df(self, sheet_name: str) -> pd.DataFrame:
         worksheet = self.spreadsheet.worksheet(sheet_name)
         return pd.DataFrame(worksheet.get_all_records())
+
+    def next_run_id(self, sheet_name: str, started_at: datetime) -> str:
+        """Create a readable, date-scoped sequence ID such as 20261116-001."""
+        prefix = started_at.strftime("%Y%m%d")
+        try:
+            worksheet = self.spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            return f"{prefix}-001"
+
+        records = worksheet.get_all_records()
+        highest = 0
+        for record in records:
+            value = str(record.get("변경 ID", "")).strip()
+            if not value.startswith(prefix + "-"):
+                continue
+            suffix = value[len(prefix) + 1:]
+            if suffix.isdigit():
+                highest = max(highest, int(suffix))
+        return f"{prefix}-{highest + 1:03d}"
 
     def replace_df(self, sheet_name: str, df: pd.DataFrame) -> None:
         try:
