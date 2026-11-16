@@ -77,26 +77,25 @@ async def run_price_competition(
         settings.google_sheet_url,
     )
     # [2]최저가 탭에서 매 실행마다 비교 URL을 새로 읽습니다.
+    run_id = sheets.next_run_id(settings.google_run_history_sheet, run_started_at)
     rows = collect_sheet_urls(sheets, settings, limit)
 
     def make_run_summary() -> dict[str, Any]:
         finished_at = datetime.now().astimezone()
-        unique_changed_urls = list(dict.fromkeys(changed_product_urls))
-        unique_changed_ids = list(dict.fromkeys(changed_product_ids))
         return {
-            "실행 ID": stamp,
+            "변경 ID": run_id,
             "실행 구분": execution_mode,
             "실행 시작 시각": run_started_at.strftime("%Y-%m-%d %H:%M:%S"),
             "실행 종료 시각": finished_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "등록 URL 수": len(rows),
+            "최저가 시트 등록 URL 수": len(rows),
             "확인한 URL 수": checked_url_count,
             "전체 조회 상품 수": scanned_product_count,
             "BestShip 상품 수": len(bestship_product_ids),
-            "변경된 상품 수": len(unique_changed_ids),
-            "변경 요청 접수 수": changed,
-            "변경하지 않은 BestShip 상품 수": len(bestship_product_ids - set(unique_changed_ids)),
-            "변경된 상품 ID 목록": "\n".join(unique_changed_ids),
-            "변경된 상품 URL 목록": "\n".join(unique_changed_urls),
+            "이미 최저가 상품 수": already_lowest,
+            "가격 변경 요청 수": changed,
+            "변경하지 않은 BestShip 상품 수": max(
+                0, len(bestship_product_ids) - already_lowest - changed
+            ),
             "가격 비교 기준": f"경쟁 최저가보다 {delta:,}엔 낮게",
             "1회 최대 인하 폭": f"{maximum:,}엔",
             "타임세일 상품 처리": "포함" if settings.allow_timesale_price_update else "제외",
