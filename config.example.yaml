@@ -17,9 +17,8 @@ app:
 google:
   sheet_url: "YOUR_GOOGLE_SHEET_URL"
   price_sheet: "[2]최저가"
-  result_sheet: "api 가격변경 시트"
-  api_history_sheet: "[6] 최저가 적용이력-공식API"
-  application_history_sheet: "api 가격변경 시트 이력"
+  run_history_sheet: "실행 이력"
+  detail_history_sheet: "실행 상세이력"
   url_column: "URL"
 
 paths:
