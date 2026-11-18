@@ -64,6 +64,22 @@ class GoogleSheetClient:
                 return index + 1
         raise ValueError(f"Google Sheet 탭을 찾을 수 없습니다: {sheet_name}")
 
+    def remove_legacy_output_sheets(self, keep: set[str]) -> list[str]:
+        """Remove only the previous program-generated output tabs after new history is saved."""
+        legacy_names = {
+            "api 가격변경 시트",
+            "[6] 최저가 적용이력-공식API",
+            "api 가격변경 시트 이력",
+            "[7] (API) 가격변경 시트",
+            "[6] (API) 최저가 적용이력",
+        }
+        removed: list[str] = []
+        for worksheet in list(self.spreadsheet.worksheets()):
+            if worksheet.title in legacy_names and worksheet.title not in keep:
+                self.spreadsheet.del_worksheet(worksheet)
+                removed.append(worksheet.title)
+        return removed
+
     def place_after(self, sheet_name: str, anchor_name: str) -> None:
         """Keep a history tab directly after the latest-result tab."""
         worksheets = self.spreadsheet.worksheets()
