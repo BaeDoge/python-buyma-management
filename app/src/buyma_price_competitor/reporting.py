@@ -167,25 +167,61 @@ async def write_results(
     settings.reports_dir.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    report = _detail_report(results)
-    if report.empty:
-        report = pd.DataFrame(columns=[
-            "URL", "상품ID", "상품명", "현재가", "최저가", "신규가",
-            "변경 요청 접수 여부", "처리 내용", "BUYMA 요청 ID",
-        ])
+    detail_columns = [
+        "변경 ID",
+        "URL",
+        "상품명",
+        "상품ID",
+        "판매자",
+        "판매자ID",
+        "현재가",
+        "화면가",
+        "최저가",
+        "신규가",
+        "가격 차이",
+        "변경 요청 접수 여부",
+        "요청 기록 시각",
+        "처리 내용",
+        "상품 정보 확인",
+        "BUYMA 요청 ID",
+        "BUYMA 응답 접수 시각",
+    ]
+    run_columns = [
+        "변경 ID",
+        "실행 구분",
+        "실행 시작 시각",
+        "실행 종료 시각",
+        "최저가 시트 등록 URL 수",
+        "확인한 URL 수",
+        "전체 조회 상품 수",
+        "BestShip 상품 수",
+        "이미 최저가 상품 수",
+        "가격 변경 요청 수",
+        "변경하지 않은 BestShip 상품 수",
+        "가격 비교 기준",
+        "1회 최대 인하 폭",
+        "타임세일 상품 처리",
+        "실행 결과",
+    ]
 
+    # 실행마다 선택적으로 생기는 열(예: 화면가, 요청 시각)이 있어도
+    # Google Sheets의 이력 열 구조는 항상 동일하게 유지합니다.
+    report = _detail_report(results)
     summary_values = dict(run_summary or {})
     run_id = str(summary_values.get("변경 ID", "")).strip()
     if not run_id:
         raise ValueError("실행 이력에 사용할 변경 ID가 없습니다.")
 
+    if "변경 ID" in report.columns:
+        report = report.drop(columns=["변경 ID"])
     report.insert(0, "변경 ID", run_id)
+    report = report.reindex(columns=detail_columns)
     report.to_csv(report_path, index=False, encoding="utf-8-sig")
 
-    # 실행 이력에는 실행당 정확히 한 행만 추가합니다.
-    summary = pd.DataFrame([summary_values])
+    # 실행 요약도 열 순서를 고정하고, 매 실행마다 한 행만 누적합니다.
+    summary = pd.DataFrame([summary_values]).reindex(columns=run_columns)
     try:
-        sheets.append_df(settings.google_run_history_sheet, summary, reset_schema=True)
+        sheets.append_df(settings.google_run_history_sheet, summary)
         if logger:
             logger.info(
                 "실행 이력을 '%s' 탭에 기록했습니다. 변경 ID=%s",
@@ -200,7 +236,7 @@ async def write_results(
     # 실행 상세이력에는 상품별 한 행을 추가하고, 같은 변경 ID로 실행 이력과 연결합니다.
     if not report.empty and len(results) > 0:
         try:
-            sheets.append_df(settings.google_detail_history_sheet, report, reset_schema=True)
+            sheets.append_df(settings.google_detail_history_sheet, report)
             if logger:
                 logger.info(
                     "상품별 상세이력을 '%s' 탭에 기록했습니다. 변경 ID=%s / %s건",
