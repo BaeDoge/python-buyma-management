@@ -32,7 +32,7 @@ build_exe.bat
 3. 예약 실행 프로그램을 빌드합니다.
 4. `dist/`에 설정 예시와 필요한 폴더를 준비합니다.
 
-빌드가 끝나면 다음 파일이 만들어집니다.
+빌드가 끝나면 다음 파일이 만들어집니다. 프로젝트 루트에 실제 `config.yaml`, `.env`, `secrets/service_account.json`, `secrets/tokens.json`이 있으면 현재 파일을 `dist/`로 복사합니다. 없으면 설정 예시를 준비하고, 기존 `dist/` 인증 파일은 덮어쓰지 않습니다.
 
 ```text
 dist/

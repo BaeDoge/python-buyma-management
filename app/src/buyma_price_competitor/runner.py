@@ -68,8 +68,8 @@ async def run_price_competition(
     checked_url_count = 0
     scanned_product_count = 0
     bestship_product_ids: set[str] = set()
-    changed_product_urls: list[str] = []
-    changed_product_ids: list[str] = []
+    already_lowest_product_ids: set[str] = set()
+    requested_product_ids: set[str] = set()
 
     sheets = GoogleSheetClient(
         settings.google_service_account,
@@ -77,26 +77,28 @@ async def run_price_competition(
         settings.google_sheet_url,
     )
     # [2]최저가 탭에서 매 실행마다 비교 URL을 새로 읽습니다.
+    run_id = sheets.next_run_id(settings.google_run_history_sheet, run_started_at)
     rows = collect_sheet_urls(sheets, settings, limit)
 
     def make_run_summary() -> dict[str, Any]:
         finished_at = datetime.now().astimezone()
-        unique_changed_urls = list(dict.fromkeys(changed_product_urls))
-        unique_changed_ids = list(dict.fromkeys(changed_product_ids))
         return {
-            "실행 ID": stamp,
+            "변경 ID": run_id,
             "실행 구분": execution_mode,
             "실행 시작 시각": run_started_at.strftime("%Y-%m-%d %H:%M:%S"),
             "실행 종료 시각": finished_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "등록 URL 수": len(rows),
+            "최저가 시트 등록 URL 수": len(rows),
             "확인한 URL 수": checked_url_count,
             "전체 조회 상품 수": scanned_product_count,
             "BestShip 상품 수": len(bestship_product_ids),
-            "변경된 상품 수": len(unique_changed_ids),
-            "변경 요청 접수 수": changed,
-            "변경하지 않은 BestShip 상품 수": len(bestship_product_ids - set(unique_changed_ids)),
-            "변경된 상품 ID 목록": "\n".join(unique_changed_ids),
-            "변경된 상품 URL 목록": "\n".join(unique_changed_urls),
+            "이미 최저가 상품 수": len(already_lowest_product_ids),
+            "가격 변경 요청 수": changed,
+            "변경하지 않은 BestShip 상품 수": max(
+                0,
+                len(bestship_product_ids)
+                - len(already_lowest_product_ids)
+                - len(requested_product_ids),
+            ),
             "가격 비교 기준": f"경쟁 최저가보다 {delta:,}엔 낮게",
             "1회 최대 인하 폭": f"{maximum:,}엔",
             "타임세일 상품 처리": "포함" if settings.allow_timesale_price_update else "제외",
@@ -338,6 +340,7 @@ async def run_price_competition(
                     if decision.reason == "이미 최저가":
                         result["적용 여부"] = None
                         already_lowest += 1
+                        already_lowest_product_ids.add(product_key)
                         results.append(result)
                         continue
 
@@ -459,8 +462,7 @@ async def run_price_competition(
                         result["request_received_at"] = request_received_at
                         result["원본 데이터 조회"] = "실시간 조회 및 필수 필드 검증 완료"
                         changed += 1
-                        changed_product_urls.append(url)
-                        changed_product_ids.append(product_id)
+                        requested_product_ids.add(product_key)
                         logger.info(
                             "  BUYMA API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
                             product_id, decision.new_price, request_uid,
@@ -583,8 +585,6 @@ async def run_price_competition(
                                 row["적용일시"] = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
                                 row["request_uid"] = request_uid
                                 row["request_received_at"] = response.get("request_received_at")
-                                changed_product_urls.append(candidate["url"])
-                                changed_product_ids.append(product_id)
                                 row["비고"] = (
                                     f"BUYMA API 요청 접수(할인/타임세일): "
                                     f"{row['현재가']:,} -> {candidate['new_price']:,}; "
@@ -592,6 +592,7 @@ async def run_price_competition(
                                     "(비동기 반영 완료 여부는 BUYMA에서 확인 필요)"
                                 )
                                 changed += 1
+                                requested_product_ids.add(str(product_id))
                                 logger.info(
                                     "할인/타임세일 API 요청 접수: 상품 %s / 가격 %s / request_uid=%s",
                                     product_id, candidate["new_price"], request_uid,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,25 @@ class GoogleSheetClient:
         worksheet = self.spreadsheet.worksheet(sheet_name)
         return pd.DataFrame(worksheet.get_all_records())
 
+    def next_run_id(self, sheet_name: str, started_at: datetime) -> str:
+        """Create a readable, date-scoped sequence ID such as 20261116-001."""
+        prefix = started_at.strftime("%Y%m%d")
+        try:
+            worksheet = self.spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            return f"{prefix}-001"
+
+        records = worksheet.get_all_records()
+        highest = 0
+        for record in records:
+            value = str(record.get("변경 ID", "")).strip()
+            if not value.startswith(prefix + "-"):
+                continue
+            suffix = value[len(prefix) + 1:]
+            if suffix.isdigit():
+                highest = max(highest, int(suffix))
+        return f"{prefix}-{highest + 1:03d}"
+
     def replace_df(self, sheet_name: str, df: pd.DataFrame) -> None:
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
@@ -43,6 +63,22 @@ class GoogleSheetClient:
             if worksheet.title == sheet_name:
                 return index + 1
         raise ValueError(f"Google Sheet 탭을 찾을 수 없습니다: {sheet_name}")
+
+    def remove_legacy_output_sheets(self, keep: set[str]) -> list[str]:
+        """Remove only the previous program-generated output tabs after new history is saved."""
+        legacy_names = {
+            "api 가격변경 시트",
+            "[6] 최저가 적용이력-공식API",
+            "api 가격변경 시트 이력",
+            "[7] (API) 가격변경 시트",
+            "[6] (API) 최저가 적용이력",
+        }
+        removed: list[str] = []
+        for worksheet in list(self.spreadsheet.worksheets()):
+            if worksheet.title in legacy_names and worksheet.title not in keep:
+                self.spreadsheet.del_worksheet(worksheet)
+                removed.append(worksheet.title)
+        return removed
 
     def place_after(self, sheet_name: str, anchor_name: str) -> None:
         """Keep a history tab directly after the latest-result tab."""
