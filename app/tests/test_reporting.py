@@ -177,8 +177,9 @@ def test_checkpoint_results_persists_each_appended_row(tmp_path):
 
 
 class FakeWorksheet:
-    def __init__(self, records):
+    def __init__(self, records, title=""):
         self.records = records
+        self.title = title
 
     def get_all_records(self):
         return self.records
@@ -192,6 +193,12 @@ class FakeSpreadsheet:
         if name not in self.worksheets_by_name:
             raise gspread.WorksheetNotFound(name)
         return self.worksheets_by_name[name]
+
+    def worksheets(self):
+        return list(self.worksheets_by_name.values())
+
+    def del_worksheet(self, worksheet):
+        self.worksheets_by_name.pop(worksheet.title)
 
 
 def test_next_run_id_increments_the_highest_sequence_for_today():
@@ -273,3 +280,34 @@ def test_detail_history_keeps_a_fixed_column_layout_for_optional_fields(tmp_path
     assert first_detail["변경 ID"].tolist() == ["20261116-003"]
     assert second_detail["변경 ID"].tolist() == ["20261116-004"]
     assert second_detail.iloc[0]["화면가"] == 14000
+
+
+
+def test_cleanup_removes_only_known_legacy_program_output_tabs():
+    client = GoogleSheetClient.__new__(GoogleSheetClient)
+    client.spreadsheet = FakeSpreadsheet({
+        "[2]최저가": FakeWorksheet([], "[2]최저가"),
+        "[7] (API) 가격변경 시트": FakeWorksheet([], "[7] (API) 가격변경 시트"),
+        "[6] (API) 최저가 적용이력": FakeWorksheet([], "[6] (API) 최저가 적용이력"),
+        "api 가격변경 시트": FakeWorksheet([], "api 가격변경 시트"),
+        "실행 이력": FakeWorksheet([], "실행 이력"),
+        "실행 상세이력": FakeWorksheet([], "실행 상세이력"),
+        "개인 메모": FakeWorksheet([], "개인 메모"),
+    })
+
+    removed = client.remove_legacy_output_sheets({
+        "실행 이력",
+        "실행 상세이력",
+    })
+
+    assert removed == [
+        "[7] (API) 가격변경 시트",
+        "[6] (API) 최저가 적용이력",
+        "api 가격변경 시트",
+    ]
+    assert set(client.spreadsheet.worksheets_by_name) == {
+        "[2]최저가",
+        "실행 이력",
+        "실행 상세이력",
+        "개인 메모",
+    }
