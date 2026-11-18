@@ -236,13 +236,13 @@ async def write_results(
     # 실행 상세이력에는 상품별 한 행을 추가하고, 같은 변경 ID로 실행 이력과 연결합니다.
     try:
         sheets.append_df(settings.google_detail_history_sheet, report, reset_schema=True)
-            if logger:
-                logger.info(
-                    "상품별 상세이력을 '%s' 탭에 기록했습니다. 변경 ID=%s / %s건",
-                    settings.google_detail_history_sheet,
-                    run_id,
-                    len(report),
-                )
+        if logger:
+            logger.info(
+                "상품별 상세이력을 '%s' 탭에 기록했습니다. 변경 ID=%s / %s건",
+                settings.google_detail_history_sheet,
+                run_id,
+                len(report),
+            )
     except Exception:
         if logger:
             logger.exception("상품별 상세이력을 Google Sheets에 저장하지 못했습니다.")
