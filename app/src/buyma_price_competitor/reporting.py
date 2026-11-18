@@ -221,7 +221,7 @@ async def write_results(
     # 실행 요약도 열 순서를 고정하고, 매 실행마다 한 행만 누적합니다.
     summary = pd.DataFrame([summary_values]).reindex(columns=run_columns)
     try:
-        sheets.append_df(settings.google_run_history_sheet, summary)
+        sheets.append_df(settings.google_run_history_sheet, summary, reset_schema=True)
         if logger:
             logger.info(
                 "실행 이력을 '%s' 탭에 기록했습니다. 변경 ID=%s",
@@ -234,9 +234,8 @@ async def write_results(
         raise
 
     # 실행 상세이력에는 상품별 한 행을 추가하고, 같은 변경 ID로 실행 이력과 연결합니다.
-    if not report.empty and len(results) > 0:
-        try:
-            sheets.append_df(settings.google_detail_history_sheet, report)
+    try:
+        sheets.append_df(settings.google_detail_history_sheet, report, reset_schema=True)
             if logger:
                 logger.info(
                     "상품별 상세이력을 '%s' 탭에 기록했습니다. 변경 ID=%s / %s건",
@@ -244,10 +243,22 @@ async def write_results(
                     run_id,
                     len(report),
                 )
-        except Exception:
-            if logger:
-                logger.exception("상품별 상세이력을 Google Sheets에 저장하지 못했습니다.")
-            raise
+    except Exception:
+        if logger:
+            logger.exception("상품별 상세이력을 Google Sheets에 저장하지 못했습니다.")
+        raise
+
+    # 두 새 이력 탭에 모두 저장된 뒤에만 이전 프로그램 출력 탭을 정리합니다.
+    try:
+        removed_tabs = sheets.remove_legacy_output_sheets({
+            settings.google_run_history_sheet,
+            settings.google_detail_history_sheet,
+        })
+        if logger and removed_tabs:
+            logger.info("이전 출력 탭을 정리했습니다: %s", ", ".join(removed_tabs))
+    except Exception:
+        if logger:
+            logger.exception("이전 출력 탭 정리 중 문제가 발생했습니다.")
 
     if logger:
         logger.info("상품별 CSV 보고서 저장: %s", report_path)
