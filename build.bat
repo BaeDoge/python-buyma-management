@@ -62,12 +62,31 @@ if errorlevel 1 goto :failed
 
 echo.
 echo [4/4] Preparing configuration examples...
-if not exist "dist\config.yaml" copy "config.example.yaml" "dist\config.yaml" >nul
-if not exist "dist\.env.example" copy ".env.example" "dist\.env.example" >nul
 if not exist "dist\secrets" mkdir "dist\secrets"
 if not exist "dist\data" mkdir "dist\data"
 if not exist "dist\logs" mkdir "dist\logs"
 if not exist "dist\reports" mkdir "dist\reports"
+
+rem Prefer the operator's actual runtime settings over the examples.
+if exist "config.yaml" (
+    copy /Y "config.yaml" "dist\config.yaml" >nul
+) else if not exist "dist\config.yaml" (
+    copy "config.example.yaml" "dist\config.yaml" >nul
+)
+
+if exist ".env" (
+    copy /Y ".env" "dist\.env" >nul
+) else if not exist "dist\.env.example" (
+    copy ".env.example" "dist\.env.example" >nul
+)
+
+rem Include local credentials only when they exist on this build PC.
+if exist "secrets\service_account.json" (
+    copy /Y "secrets\service_account.json" "dist\secrets\service_account.json" >nul
+)
+if exist "secrets\tokens.json" (
+    copy /Y "secrets\tokens.json" "dist\secrets\tokens.json" >nul
+)
 
 echo.
 echo Build completed.
